@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Focus — Time & Work Mastery</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- ── Mobile Top Bar ── -->
+  <div class="mobile-topbar" id="mobileTopbar">
+    <div class="mobile-logo">
+      <span class="mobile-logo-mark">F</span>
+      <span class="mobile-logo-text">FOCUS</span>
+    </div>
+    <div class="mobile-topbar-controls">
+      
+      <button class="mobile-mode-toggle" id="mobileModeToggle" title="Toggle light/dark">☽</button>
+      <button class="mobile-settings-btn" id="mobileSettingsBtn" title="Settings" onclick="showSection('settings')">⚙</button>
+    </div>
+  </div>
+
+  <div class="ambient-bg">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="grain"></div>
+  </div>
+
+  <!-- ── Desktop Sidebar ── -->
+  <nav class="sidebar" id="desktopSidebar">
+    <div class="logo">
+      <span class="logo-mark">F</span>
+      <span class="logo-text">FOCUS</span>
+    </div>
+    <ul class="nav-links">
+      <li class="nav-item active" data-section="dashboard"><span class="nav-icon">◈</span><span class="nav-label">Dashboard</span></li>
+      <li class="nav-item" data-section="pomodoro"><span class="nav-icon">◎</span><span class="nav-label">Timer</span></li>
+      <li class="nav-item" data-section="tasks"><span class="nav-icon">◇</span><span class="nav-label">Tasks</span></li>
+      <li class="nav-item" data-section="planner"><span class="nav-icon">▦</span><span class="nav-label">Planner</span></li>
+      <li class="nav-item" data-section="stats"><span class="nav-icon">◉</span><span class="nav-label">Stats</span></li>
+      <li class="nav-item" data-section="notes"><span class="nav-icon">✦</span><span class="nav-label">Notes</span></li>
+      <li class="nav-item" data-section="settings"><span class="nav-icon">⚙</span><span class="nav-label">Settings</span></li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <div class="current-time" id="sidebarTime">--:--</div>
+      <div class="current-date" id="sidebarDate">---</div>
+    </div>
+  </nav>
+
+  <!-- ── Mobile Bottom Nav ── -->
+  <nav class="mobile-nav" id="mobileNav">
+    <div class="mobile-nav-item active" data-section="dashboard"><span class="mnav-icon">◈</span><span class="mnav-label">Dashboard</span></div>
+    <div class="mobile-nav-item" data-section="pomodoro"><span class="mnav-icon">◎</span><span class="mnav-label">Timer</span></div>
+    <div class="mobile-nav-item" data-section="tasks"><span class="mnav-icon">◇</span><span class="mnav-label">Tasks</span></div>
+    <div class="mobile-nav-item" data-section="planner"><span class="mnav-icon">▦</span><span class="mnav-label">Planner</span></div>
+    <div class="mobile-nav-item" data-section="stats"><span class="mnav-icon">◉</span><span class="mnav-label">Stats</span></div>
+    <div class="mobile-nav-item" data-section="notes"><span class="mnav-icon">✦</span><span class="mnav-label">Notes</span></div>
+  </nav>
+
+  <main class="main-content">
+
+    <!-- ══ DASHBOARD ══ -->
+    <section class="section active" id="dashboard">
+      <header class="section-header">
+        <div>
+          <p class="section-label">Good morning</p>
+          <h1 class="section-title">Your Day at a Glance</h1>
+        </div>
+        <div class="header-quote">
+          <p id="quoteText">"The secret of getting ahead is getting started."</p>
+          <span id="quoteAuthor">— Mark Twain</span>
+        </div>
+      </header>
+      <div class="dashboard-grid">
+        <div class="dashboard-stat-bar">
+          <div class="card stat-card" data-delay="0"><div class="stat-icon">⏱</div><div class="stat-info"><div class="stat-value" id="todayFocusTime">0h 0m</div><div class="stat-label">Focus Time Today</div></div><div class="stat-bar"><div class="stat-fill" id="focusFill" style="width:0%"></div></div></div>
+          <div class="card stat-card" data-delay="1"><div class="stat-icon">✓</div><div class="stat-info"><div class="stat-value" id="tasksCompleted">0 / 0</div><div class="stat-label">Tasks Completed</div></div><div class="stat-bar"><div class="stat-fill" id="taskFill" style="width:0%"></div></div></div>
+          <div class="card stat-card" data-delay="2"><div class="stat-icon">🔥</div><div class="stat-info"><div class="stat-value" id="streakDays">0</div><div class="stat-label">Day Streak</div></div><div class="stat-bar"><div class="stat-fill" id="streakFill" style="width:0%"></div></div></div>
+          <div class="card stat-card" data-delay="3"><div class="stat-icon">◎</div><div class="stat-info"><div class="stat-value" id="pomodoroCount">0</div><div class="stat-label">Sessions Done</div></div><div class="stat-bar"><div class="stat-fill" id="pomodoroFill" style="width:0%"></div></div></div>
+        </div>
+        <div class="card mini-pomodoro-card" data-delay="4"><div class="mini-card-label">Quick Focus</div><div class="mini-timer-display" id="dashTimerDisplay">25:00</div><div class="mini-timer-controls"><button class="mini-btn" onclick="goToTimer()">Start Session</button></div><div class="mini-session-type">Deep Focus · 25 min</div></div>
+        <div class="card tasks-preview-card" data-delay="5"><div class="mini-card-label">Today's Focus</div><ul class="preview-task-list" id="dashTaskList"><li class="preview-task empty-state">No tasks yet — add some in Tasks ↗</li></ul><button class="text-btn" onclick="showSection('tasks')">View all tasks →</button></div>
+        <div class="card tip-card" data-delay="6"><div class="mini-card-label">Technique of the Day</div><h3 class="tip-title" id="tipTitle">The Focus Technique</h3><p class="tip-desc" id="tipDesc">Work in focused 25-minute intervals separated by 5-minute breaks. After 4 sessions, take a longer 15–30 minute break.</p><button class="text-btn" id="nextTipBtn">Next tip →</button></div>
+        <div class="card weekly-card" data-delay="7"><div class="mini-card-label">This Week</div><div class="week-bars" id="weekBars"></div><div class="week-labels"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div></div>
+        <div class="card monthly-card" data-delay="8"><div class="mini-card-label">This Month</div><div class="month-grid" id="monthGrid"></div></div>
+      </div>
+    </section>
+
+    <!-- ══ TIMER ══ -->
+    <section class="section" id="pomodoro">
+      <header class="section-header">
+        <div><p class="section-label">Focus Engine</p><h1 class="section-title">Focus Timer</h1></div>
+      </header>
+      <div class="pomodoro-layout">
+        <div class="pomodoro-center">
+          <div class="pomo-tabs">
+            <button class="pomo-tab active" data-mode="pomodoro">Focus</button>
+            <button class="pomo-tab" data-mode="short">Short Break</button>
+            <button class="pomo-tab" data-mode="long">Long Break</button>
+          </div>
+          <div class="timer-ring-wrapper">
+            <svg class="timer-ring" viewBox="0 0 300 300">
+              <circle class="ring-track" cx="150" cy="150" r="130"/>
+              <circle class="ring-progress" id="ringProgress" cx="150" cy="150" r="130" stroke-dasharray="816.8" stroke-dashoffset="0"/>
+            </svg>
+            <div class="timer-center">
+              <div class="timer-session-label" id="timerSessionLabel">FOCUS</div>
+              <div class="timer-display" id="timerDisplay">25:00</div>
+              <div class="timer-session-count" id="sessionCount">Session 1 of 4</div>
+            </div>
+          </div>
+          <div class="timer-controls">
+            <button class="ctrl-btn secondary" id="resetBtn">↺ Reset</button>
+            <button class="ctrl-btn primary" id="startStopBtn">▶ Start</button>
+            <button class="ctrl-btn secondary" id="skipBtn">Skip ↦</button>
+          </div>
+          <div class="session-task-box">
+            <div class="session-task-label">Working on</div>
+            <input type="text" id="sessionTaskInput" class="session-task-input" placeholder="What are you focusing on right now?" />
+          </div>
+        </div>
+        <div class="pomodoro-sidebar">
+          <div class="card pomo-history-card">
+            <div class="mini-card-label">Session Log</div>
+            <ul class="session-log" id="sessionLog"><li class="log-empty">No sessions yet today.</li></ul>
+          </div>
+          <div class="card pomo-settings-card">
+            <div class="mini-card-label">Timer Settings</div>
+            <div class="setting-row">
+              <label>Focus</label>
+              <div class="setting-control">
+                <input type="text" id="pomoDuration" class="timer-dur-input" value="25" />
+                <select id="pomoDurationUnit" class="timer-unit-select">
+                  <option value="min">min</option>
+                  <option value="hr">hr</option>
+                </select>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>Short Break</label>
+              <div class="setting-control">
+                <input type="text" id="shortBreak" class="timer-dur-input" value="5" />
+                <select id="shortBreakUnit" class="timer-unit-select">
+                  <option value="min">min</option>
+                  <option value="hr">hr</option>
+                </select>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label>Long Break</label>
+              <div class="setting-control">
+                <input type="text" id="longBreak" class="timer-dur-input" value="15" />
+                <select id="longBreakUnit" class="timer-unit-select">
+                  <option value="min">min</option>
+                  <option value="hr">hr</option>
+                </select>
+              </div>
+            </div>
+            <div class="setting-row"><label>Sessions before long break</label><div class="setting-control"><input type="text" id="sessionGoal" class="timer-dur-input" value="4" /></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ TASKS ══ -->
+    <section class="section" id="tasks">
+      <header class="section-header">
+        <div><p class="section-label">Task Manager</p><h1 class="section-title">What Needs Doing</h1></div>
+      </header>
+      <div class="tasks-layout">
+        <div class="card add-task-card">
+          <div class="mini-card-label">New Task</div>
+          <div class="add-task-form">
+            <input type="text" id="taskInput" placeholder="Describe your task..." class="task-text-input" />
+            <div class="task-meta">
+              <select id="taskCategory" class="task-select">
+                <option value="work">💼 Work</option><option value="study">📚 Study</option><option value="personal">🌱 Personal</option><option value="health">💪 Health</option><option value="creative">🎨 Creative</option><option value="finance">💰 Finance</option><option value="social">👥 Social</option><option value="errands">🛒 Errands</option><option value="reading">📖 Reading</option><option value="project">🚀 Project</option>
+              </select>
+              <select id="taskPriority" class="task-select">
+                <option value="critical">🔴 Critical</option><option value="high">🟠 High</option><option value="medium">🟡 Medium</option><option value="low">🟢 Low</option><option value="someday">⚪ Someday</option>
+              </select>
+              <select id="taskStatus" class="task-select">
+                <option value="not-started">○ Not Started</option><option value="working">◑ Working On It</option><option value="stuck">⚠ Stuck</option><option value="done">✓ Done</option>
+              </select>
+              <input type="date" id="taskDue" class="task-select" />
+              <button id="addTaskBtn" class="add-task-btn">+ Add</button>
+            </div>
+          </div>
+        </div>
+        <div class="filter-bar">
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="work">Work</button>
+          <button class="filter-btn" data-filter="study">Study</button>
+          <button class="filter-btn" data-filter="personal">Personal</button>
+          <button class="filter-btn" data-filter="health">Health</button>
+          <button class="filter-btn" data-filter="creative">Creative</button>
+          <button class="filter-btn" data-filter="finance">Finance</button>
+          <button class="filter-btn" data-filter="reading">Reading</button>
+          <button class="filter-btn" data-filter="project">Project</button>
+          <div class="filter-sep"></div>
+          <button class="filter-btn" data-filter="pending">Pending</button>
+          <button class="filter-btn" data-filter="done">Done</button>
+        </div>
+        <div class="task-list-container">
+          <ul class="task-list" id="taskList"><li class="task-empty-state"><span>✦</span><p>Your task list is clear.</p></li></ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ PLANNER ══ -->
+    <section class="section" id="planner">
+      <header class="section-header">
+        <div><p class="section-label">Schedule</p><h1 class="section-title">Planner</h1></div>
+        <div class="planner-header-right">
+          <div class="planner-view-toggle" id="plannerViewToggle">
+            <button class="pvt-btn active" id="weekViewTab" data-view="week">Week</button>
+            <button class="pvt-btn" id="monthViewTab" data-view="month">Month</button>
+          </div>
+          <button class="zoom-back-btn" id="zoomBackBtn" style="display:none">← Back</button>
+          <div class="planner-week-nav" id="plannerNav" style="display:none">
+            <button class="planner-nav-btn" id="prevWeek">←</button>
+            <span id="plannerWeekLabel">This Week</span>
+            <button class="planner-nav-btn" id="nextWeek">→</button>
+          </div>
+        </div>
+      </header>
+
+      <div id="weeklyView">
+        <div class="weekly-planner-grid" id="weeklyPlannerGrid"></div>
+      </div>
+
+      <div id="monthlyView" style="display:none">
+        <div class="monthly-planner-grid" id="monthlyPlannerGrid"></div>
+      </div>
+
+      <div id="dayZoomView" style="display:none">
+        <div class="day-zoom-layout">
+          <div class="day-zoom-grid-wrap">
+            <div class="day-zoom-header" id="dayZoomHeader"></div>
+            <div class="day-zoom-grid" id="dayZoomGrid"></div>
+          </div>
+          <div class="planner-sidebar-zoom">
+            <div class="card add-block-card">
+              <div class="mini-card-label">Add Block</div>
+              <input type="text" id="blockTitle" placeholder="Block title..." class="task-text-input" />
+              <div class="block-simple-time">
+                <div class="bst-row">
+                  <label class="bst-label">Start</label>
+                  <input type="time" id="blockStartTime" class="task-select bst-time-input" value="09:00" />
+                </div>
+                <div class="bst-row">
+                  <label class="bst-label">Duration</label>
+                  <input type="text" id="blockDurationInput" class="task-select bst-time-input" value="60 min" placeholder="e.g. 90 min, 1h 30m, 45" style="width:120px" />
+                  <input type="hidden" id="blockDuration" value="60" />
+                </div>
+              </div>
+              <select id="blockType" class="task-select" style="width:100%;margin-top:8px">
+                <option value="focus">🔴 Deep Focus</option>
+                <option value="meeting">🟡 Meeting</option>
+                <option value="break">🟢 Break</option>
+                <option value="study">🔵 Study</option>
+                <option value="admin">⚪ Admin</option>
+                <option value="creative">🟣 Creative</option>
+                <option value="exercise">🟠 Exercise</option>
+              </select>
+              <textarea id="blockNote" class="block-note-input" placeholder="Add a note to this block... (optional)"></textarea>
+              <button id="addBlockBtn" class="add-task-btn" style="width:100%;margin-top:10px">+ Add Block</button>
+            </div>
+            <div class="card productivity-tips-card">
+              <div class="mini-card-label">Tips</div>
+              <ul class="tips-list">
+                <li>🌅 Schedule deep focus in peak morning hours</li>
+                <li>📧 Batch admin in low-energy afternoons</li>
+                <li>⏸ Add buffer time between blocks</li>
+                <li>🚫 Protect focus blocks from interruption</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Missed Tasks: overdue unfinished blocks -->
+      <div class="planner-inventory" id="plannerInventory" style="display:none">
+        <div class="inventory-header">
+          <span class="inventory-icon">📋</span>
+          <span class="inventory-title">Missed Tasks</span>
+          <span class="inventory-count" id="inventoryCount">0</span>
+        </div>
+        <ul class="inventory-list" id="inventoryList"></ul>
+      </div>
+    </section>
+
+    <!-- ══ STATS ══ -->
+    <section class="section" id="stats">
+      <header class="section-header">
+        <div><p class="section-label">Analytics</p><h1 class="section-title">Focus Statistics</h1></div>
+        <div class="stats-range-tabs">
+          <button class="range-tab active" data-range="week">Week</button>
+          <button class="range-tab" data-range="month">Month</button>
+        </div>
+      </header>
+      <div class="stats-grid">
+        <div class="card big-stat-card" data-delay="0"><div class="big-stat-value" id="totalFocusHours">0h</div><div class="big-stat-label">Total Focus Hours</div><div class="big-stat-sub">All time</div></div>
+        <div class="card big-stat-card" data-delay="1"><div class="big-stat-value" id="totalPomodoros">0</div><div class="big-stat-label">Sessions Done</div><div class="big-stat-sub">All time</div></div>
+        <div class="card big-stat-card" data-delay="2"><div class="big-stat-value" id="totalTasksDone">0</div><div class="big-stat-label">Tasks Finished</div><div class="big-stat-sub">All time</div></div>
+        <div class="card big-stat-card" data-delay="3"><div class="big-stat-value" id="bestStreak">0</div><div class="big-stat-label">Best Streak</div><div class="big-stat-sub">Days in a row</div></div>
+
+        <div class="card line-graph-card" data-delay="4">
+          <div class="mini-card-label" id="lineGraphLabel">Focus Over Time (minutes)</div>
+          <div class="line-chart-container"><canvas id="focusLineChart"></canvas></div>
+          <div class="line-graph-legend">
+            <span class="legend-dot green-dot"></span> Improving &nbsp;
+            <span class="legend-dot red-dot"></span> Declining &nbsp;
+            <span class="legend-dot gray-dot"></span> Steady
+          </div>
+        </div>
+
+        <div class="card chart-card" data-delay="5">
+          <div class="mini-card-label" id="barChartLabel">Daily Focus (minutes)</div>
+          <div class="bar-chart" id="statsWeekChart"></div>
+        </div>
+
+        <div class="card breakdown-card" data-delay="6">
+          <div class="mini-card-label">Task Breakdown</div>
+          <div class="breakdown-list" id="breakdownList"></div>
+        </div>
+
+        <div class="card efficiency-card" data-delay="7">
+          <div class="mini-card-label">Efficiency Score</div>
+          <div class="efficiency-ring-wrapper">
+            <svg class="efficiency-ring" viewBox="0 0 200 200">
+              <circle class="eff-track" cx="100" cy="100" r="80"/>
+              <circle class="eff-progress" id="effProgress" cx="100" cy="100" r="80" stroke-dasharray="502.7" stroke-dashoffset="502.7"/>
+            </svg>
+            <div class="efficiency-center">
+              <div class="efficiency-value" id="efficiencyValue">—</div>
+              <div class="efficiency-label">Score</div>
+            </div>
+          </div>
+          <p class="efficiency-desc" id="efficiencyDesc">Complete tasks and sessions to build your score.</p>
+        </div>
+
+        <div class="card pie-chart-card" data-delay="8">
+          <div class="mini-card-label">Tasks: On Time vs Missed</div>
+          <div class="pie-chart-wrap">
+            <svg id="taskPieChart" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg"></svg>
+          </div>
+          <div class="pie-legend">
+            <span><span class="pie-legend-dot" style="background:#4dd87a"></span>On Time</span>
+            <span><span class="pie-legend-dot" style="background:#ff5a53"></span>Missed</span>
+            <span><span class="pie-legend-dot" style="background:var(--text-muted)"></span>Pending</span>
+          </div>
+          <div id="pieChartStats" style="margin-top:10px;font-family:var(--font-mono);font-size:11px;color:var(--text-muted);text-align:center"></div>
+        </div>
+
+        <div class="card achievements-card" data-delay="9">
+          <div class="mini-card-label">Achievements</div>
+          <div class="achievements-grid" id="achievementsGrid"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ NOTES ══ -->
+    <section class="section" id="notes">
+      <header class="section-header">
+        <div><p class="section-label">Brain Dump</p><h1 class="section-title">Notes</h1></div>
+        <div class="notes-header-right">
+          <button class="add-task-btn" id="addNoteBtn">+ New Note</button>
+        </div>
+      </header>
+      <div class="notes-layout">
+        <div class="notes-sidebar">
+          <input type="text" id="noteSearch" placeholder="Search notes..." class="task-text-input notes-search" />
+          <ul class="notes-list" id="notesList"></ul>
+        </div>
+        <div class="notes-editor-wrap">
+          <div class="notes-editor-empty" id="notesEmpty">
+            <span>✦</span>
+            <p>Select a note or create a new one</p>
+          </div>
+          <div class="notes-editor" id="notesEditor" style="display:none">
+            <div class="note-top-bar">
+              <input type="text" class="note-title-input" id="noteTitleInput" placeholder="Note title..." />
+              <div class="note-color-picker" id="noteColorPicker">
+                <button class="note-color-pill active" data-color="default" title="Default" style="--pill-color:var(--accent)">◈</button>
+                <button class="note-color-pill" data-color="blue" title="Blue" style="--pill-color:var(--blue)">◈</button>
+                <button class="note-color-pill" data-color="green" title="Green" style="--pill-color:var(--green)">◈</button>
+                <button class="note-color-pill" data-color="red" title="Red" style="--pill-color:var(--red)">◈</button>
+                <button class="note-color-pill" data-color="purple" title="Purple" style="--pill-color:var(--purple)">◈</button>
+                <button class="note-color-pill" data-color="orange" title="Orange" style="--pill-color:var(--orange)">◈</button>
+              </div>
+            </div>
+            <div class="note-toolbar">
+              <select id="noteCategory" class="task-select note-cat-select">
+                <option value="general">📝 General</option>
+                <option value="ideas">💡 Ideas</option>
+                <option value="study">📚 Study</option>
+                <option value="work">💼 Work</option>
+                <option value="journal">📔 Journal</option>
+              </select>
+              <button class="note-tool-btn" id="noteHrBtn" title="Divider">——</button>
+              <div style="flex:1"></div>
+              <button class="note-delete-btn" id="deleteNoteBtn">✕ Delete</button>
+            </div>
+            <textarea id="noteBody" class="note-body" placeholder="Start writing..."></textarea>
+            <div class="note-footer">
+              <span id="noteWordCount">0 words</span>
+              <span id="noteLastSaved">Not saved</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ SETTINGS ══ -->
+    <section class="section" id="settings">
+      <header class="section-header">
+        <div><p class="section-label">Preferences</p><h1 class="section-title">Settings</h1></div>
+      </header>
+      <div class="settings-grid">
+        <div class="card settings-card" data-delay="0">
+          <div class="mini-card-label">Appearance</div>
+          <div class="settings-section-body">
+            <div class="settings-row">
+              <div class="settings-row-info">
+                <span class="settings-row-label">Theme</span>
+                <span class="settings-row-desc">Choose your colour palette</span>
+              </div>
+              <select id="settingsThemeSelect" class="theme-select settings-select">
+                <option value="midnight">Midnight</option>
+                <option value="forest">Forest</option>
+                <option value="sunset">Sunset</option>
+                <option value="arctic">Arctic</option>
+                <option value="rose">Rose Gold</option>
+              </select>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-info">
+                <span class="settings-row-label">Light Mode</span>
+                <span class="settings-row-desc">Switch between dark and light interface</span>
+              </div>
+              <button class="settings-toggle-btn" id="settingsLightModeBtn">☽ Dark</button>
+            </div>
+          </div>
+        </div>
+        <div class="card settings-card" data-delay="1">
+          <div class="mini-card-label">Data</div>
+          <div class="settings-section-body">
+            <div class="settings-row">
+              <div class="settings-row-info">
+                <span class="settings-row-label">Reset All Information</span>
+                <span class="settings-row-desc">Permanently delete all tasks, notes, planner blocks, and statistics. This cannot be undone.</span>
+              </div>
+              <button class="settings-danger-btn" id="resetAllDataBtn">⚠ Reset Everything</button>
+            </div>
+          </div>
+        </div>
+        <div class="card settings-card" data-delay="2">
+          <div class="mini-card-label">About</div>
+          <div class="settings-section-body">
+            <div class="settings-row">
+              <div class="settings-row-info">
+                <span class="settings-row-label">FOCUS</span>
+                <span class="settings-row-desc">Version 1.3 — Your personal time & work mastery tool. All data is stored locally in your browser.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Edit Block Modal -->
+  <div class="modal-overlay" id="editBlockModal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span>Edit Block</span>
+        <button class="modal-close" id="editBlockModalClose">✕</button>
+      </div>
+      <div style="padding:16px 20px;display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:6px">TITLE</div>
+          <input type="text" id="editBlockTitle" class="task-text-input" style="width:100%" placeholder="Block title..." />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:6px">START TIME</div>
+            <input type="time" id="editBlockStart" class="task-select bst-time-input" style="width:100%" />
+          </div>
+          <div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:6px">DURATION</div>
+            <input type="text" id="editBlockDurationInput" class="task-select bst-time-input" style="width:100%" placeholder="e.g. 60 min, 1h 30m" />
+          </div>
+        </div>
+        <div>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:6px">TYPE</div>
+          <select id="editBlockType" class="task-select" style="width:100%">
+            <option value="focus">🔴 Deep Focus</option>
+            <option value="meeting">🟡 Meeting</option>
+            <option value="break">🟢 Break</option>
+            <option value="study">🔵 Study</option>
+            <option value="admin">⚪ Admin</option>
+            <option value="creative">🟣 Creative</option>
+            <option value="exercise">🟠 Exercise</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:6px">NOTE</div>
+          <textarea id="editBlockNote" class="block-note-input" style="width:100%;min-height:80px" placeholder="Add a note..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="add-task-btn" id="editBlockSave">Save Changes</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-overlay" id="blockNoteModal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span id="modalBlockTitle">Block Note</span>
+        <button class="modal-close" id="modalClose">✕</button>
+      </div>
+      <textarea id="modalNoteBody" class="modal-note-body" placeholder="Add notes for this block..."></textarea>
+      <div class="modal-footer">
+        <button class="add-task-btn" id="modalSave">Save Note</button>
+      </div>
+    </div>
+  </div>
+
+  
+  <div class="toast" id="toast"></div>
+  <script src="index.js"></script>
+</body>
+</html>
