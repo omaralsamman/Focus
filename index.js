@@ -70,6 +70,8 @@ const State = {
     try{ sessionStorage.setItem(key,data); }catch(e){}
     this._idbSet(key,data); // async, fire-and-forget
     try{ if(typeof window.storage!=='undefined') window.storage.set(key,data); }catch(e){}
+    // Push to Supabase cloud if signed in
+    SupaSync.push(data);
   }
 };
 
@@ -2067,6 +2069,68 @@ document.querySelectorAll('.add-task-btn, .mini-btn, .ctrl-btn.primary').forEach
 // ══════════════════════════════════════════════════════
 //  SUPABASE AUTH — Google OAuth
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════
+//  SupaSync — cloud read/write helper
+// ══════════════════════════════════════════════
+const SupaSync = {
+  _sb: null,        // supabase client, set once lib loads
+  _uid: null,       // current user id
+  _pushTimer: null, // debounce handle
+
+  init(sb){ this._sb = sb; },
+
+  setUser(uid){ this._uid = uid; },
+
+  // Pull cloud state and merge into local State, then re-render
+  async pull(){
+    if(!this._sb || !this._uid) return;
+    try{
+      const { data, error } = await this._sb
+        .from('user_data')
+        .select('state')
+        .eq('user_id', this._uid)
+        .single();
+      if(error || !data) return;
+      const s = typeof data.state === 'string' ? JSON.parse(data.state) : data.state;
+      if(!s || !Object.keys(s).length) return;
+      // Merge cloud into State
+      if(s.tasks)         State.tasks         = s.tasks;
+      if(s.planner)       State.planner.blocks = s.planner;
+      if(s.stats)         Object.assign(State.stats, s.stats);
+      if(s.pomo)          Object.assign(State.pomo.durations, s.pomo.durations||{});
+      if(s.notes)         State.notes         = s.notes;
+      if(s.theme)         State.theme         = s.theme;
+      if(s.lightMode !== undefined) State.lightMode = s.lightMode;
+      if(s.customColumns) State.customColumns = s.customColumns;
+      if(s.hasEverRun !== undefined) State.hasEverRun = s.hasEverRun;
+      // Persist locally too
+      State.save();
+      // Re-render everything
+      try{ renderDashboard(); }catch(e){}
+      try{ renderTasks(); }catch(e){}
+      try{ renderNotes(); }catch(e){}
+      try{ renderPlanner(); }catch(e){}
+      try{ renderStats(); }catch(e){}
+      toast('Data synced from cloud ☁️', 'success');
+    }catch(e){ console.warn('[SupaSync] pull error', e); }
+  },
+
+  // Debounced push — waits 2 s after last save before writing to Supabase
+  push(jsonData){
+    if(!this._sb || !this._uid) return;
+    clearTimeout(this._pushTimer);
+    this._pushTimer = setTimeout(async ()=>{
+      try{
+        await this._sb.from('user_data').upsert({
+          user_id: this._uid,
+          state:   jsonData,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+      }catch(e){ console.warn('[SupaSync] push error', e); }
+    }, 2000);
+  },
+};
+
 (function initSupabaseAuth(){
   const SUPABASE_URL  = 'https://wrelecqwsovhevioмktf.supabase.co'.replace('\u043c','m');
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndyZWxlY3F3c292aGV2aW9ta3RmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzI3NjUsImV4cCI6MjA5NDQwODc2NX0.Vj2OcbMUvXcpNO7JkJikotJIjI5D41AYV-oFuJc8H6A';
@@ -2084,9 +2148,10 @@ document.querySelectorAll('.add-task-btn, .mini-btn, .ctrl-btn.primary').forEach
 
   waitForLib(function(){
     const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    SupaSync.init(sb);
 
     // ── UI helpers ──
-    function showSignedIn(user){
+    function showSignedIn(user, doPull=false){
       const out=$('authSignedOut'), inn=$('authSignedIn');
       if(out) out.style.display='none';
       if(inn) inn.style.display='';
@@ -2108,12 +2173,16 @@ document.querySelectorAll('.add-task-btn, .mini-btn, .ctrl-btn.primary').forEach
           av.textContent=name.charAt(0).toUpperCase();
         }
       }
+      // Register user with SupaSync and pull cloud data
+      SupaSync.setUser(user.id);
+      if(doPull) SupaSync.pull();
     }
 
     function showSignedOut(){
       const out=$('authSignedOut'), inn=$('authSignedIn');
       if(out) out.style.display='';
       if(inn) inn.style.display='none';
+      SupaSync.setUser(null);
     }
 
     // ── Button events ──
@@ -2143,15 +2212,20 @@ document.querySelectorAll('.add-task-btn, .mini-btn, .ctrl-btn.primary').forEach
       });
     }
 
-    // ── Session listener ──
-    sb.auth.onAuthStateChange((_event,session)=>{
-      if(session&&session.user){ showSignedIn(session.user); }
+    // ── Session listener — pull on every fresh sign-in ──
+    sb.auth.onAuthStateChange((event, session)=>{
+      if(session&&session.user){
+        const doPull = (event==='SIGNED_IN' || event==='TOKEN_REFRESHED');
+        showSignedIn(session.user, doPull);
+      }
       else{ showSignedOut(); }
     });
 
     // ── Check existing session on load ──
     sb.auth.getSession().then(({ data })=>{
-      if(data&&data.session&&data.session.user){ showSignedIn(data.session.user); }
+      if(data&&data.session&&data.session.user){
+        showSignedIn(data.session.user, true); // always pull on page load
+      }
       else{ showSignedOut(); }
     });
   });
