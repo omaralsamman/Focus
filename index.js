@@ -4,6 +4,10 @@
    ═══════════════════════════════════════════════ */
 
 // ── STATE ──
+const supabaseUrl = 'https://wrelecqwsovheviomktf.supabase.co'
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndyZWxlY3F3c292aGV2aW9ta3RmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzI3NjUsImV4cCI6MjA5NDQwODc2NX0.Vj2OcbMUvXcpNO7JkJikotJIjI5D41AYV-oFuJc8H6A'
+
+const supabase = supabase.createClient(supabaseUrl, supabaseKey)
 const State = {
   pomo: {
     running:false, intervalId:null, mode:'pomodoro',
