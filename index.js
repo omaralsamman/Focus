@@ -11,13 +11,17 @@ const State = {
     durations:{ pomoDuration:25, shortBreak:5, longBreak:15, sessionGoal:4 },
   },
   tasks:[],
+  taskTrash:[],
   customColumns:[],
   planner:{ blocks:{}, weekOffset:0 },
+  blockTrash:[],
   stats:{ focusMinutesByDay:{}, totalPomodoros:0, bestStreak:0, currentStreak:0, lastFocusDay:'', missedTasks:[], doneOnTimeTasks:[] },
-  notes:[], activeNoteId:null,
+  notes:[], noteTrash:[], activeNoteId:null,
   theme:'midnight', lightMode:false,
   statsRange:'week', zoomedDay:null,
   hasEverRun:false,
+  rankSystemEnabled: true,
+  rank: { points: 0, events: [] },
 
   // ── IndexedDB helpers (most reliable on mobile Safari for localhost) ──
   _idbGet(key){ return new Promise(resolve=>{ try{ const req=indexedDB.open('focus_db',1); req.onupgradeneeded=e=>e.target.result.createObjectStore('kv'); req.onsuccess=e=>{ try{ const tx=e.target.result.transaction('kv','readonly'); const r=tx.objectStore('kv').get(key); r.onsuccess=()=>resolve(r.result||null); r.onerror=()=>resolve(null); }catch(_){resolve(null);} }; req.onerror=()=>resolve(null); }catch(_){resolve(null);} }); },
@@ -42,7 +46,9 @@ const State = {
     }
     try{
       if(s.tasks) this.tasks=s.tasks;
+      if(s.taskTrash) this.taskTrash=s.taskTrash;
       if(s.planner) this.planner.blocks=s.planner;
+      if(s.blockTrash) this.blockTrash=s.blockTrash;
       if(s.stats){
         Object.assign(this.stats,s.stats);
         if(!this.stats.missedTasks) this.stats.missedTasks=[];
@@ -50,20 +56,25 @@ const State = {
       }
       if(s.pomo) Object.assign(this.pomo.durations,s.pomo.durations||{});
       if(s.notes) this.notes=s.notes;
+      if(s.noteTrash) this.noteTrash=s.noteTrash;
       if(s.theme) this.theme=s.theme;
       if(s.lightMode!==undefined) this.lightMode=s.lightMode;
       if(s.customColumns) this.customColumns=s.customColumns;
       if(s.hasEverRun !== undefined) this.hasEverRun = s.hasEverRun;
+      if(s.rankSystemEnabled !== undefined) this.rankSystemEnabled = s.rankSystemEnabled;
+      if(s.rank) this.rank = s.rank;
     }catch(e){ console.warn('State apply error',e); }
   },
   save(){
     const key='focus_state_v3';
     const data=JSON.stringify({
-      tasks:this.tasks, planner:this.planner.blocks, stats:this.stats,
-      pomo:{durations:this.pomo.durations}, notes:this.notes,
+      tasks:this.tasks, taskTrash:this.taskTrash||[], planner:this.planner.blocks, blockTrash:this.blockTrash||[], stats:this.stats,
+      pomo:{durations:this.pomo.durations}, notes:this.notes, noteTrash:this.noteTrash||[],
       theme:this.theme, lightMode:this.lightMode,
       customColumns:this.customColumns||[],
       hasEverRun:this.hasEverRun,
+      rankSystemEnabled:this.rankSystemEnabled,
+      rank:this.rank,
     });
     // Write to ALL storage layers so at least one survives a mobile refresh
     try{ localStorage.setItem(key,data); }catch(e){}
@@ -111,11 +122,15 @@ function applyTheme(theme, light){
   document.body.classList.toggle('light-mode', !!light);
   document.documentElement.classList.remove('light-mode');
   // Sync settings page controls
-  const sSel=$('settingsThemeSelect'); if(sSel) sSel.value=theme;
+  const sSel=$('settingsThemePicker');
+  if(sSel) sSel.querySelectorAll('.tswatch').forEach(b => b.classList.toggle('active', b.dataset.theme === theme));
   const sBtn=$('settingsLightModeBtn'); if(sBtn) sBtn.textContent=light?'☀ Light':'☽ Dark';
-  // Sync mobile toggle
-  const mBtn=$('mobileModeToggle');
-  if(mBtn){ mBtn.textContent=light?'☀':'☽'; mBtn.title=light?'Switch to dark':'Switch to light'; }
+  // Sync the Altayer-style toggle (Altayer: checked=dark, unchecked=light)
+  const chk=document.getElementById('darkmode-switch');
+  if(chk) chk.checked=!light;   // dark mode = checked, light mode = unchecked
+  // Sync desktop label via .is-dark class (can't use CSS :checked sibling across DOM)
+  const desktopLbl=document.querySelector('.desktop-focus-toggle');
+  if(desktopLbl) desktopLbl.classList.toggle('is-dark', !light);
   State.theme=theme; State.lightMode=!!light;
   State.save();
   if(document.getElementById('stats').classList.contains('active')) updateStats();
@@ -277,6 +292,12 @@ function handleTimerDone(){
     const today=todayStr();
     State.stats.focusMinutesByDay[today]=(State.stats.focusMinutesByDay[today]||0)+POMO.durations.pomoDuration;
     State.stats.totalPomodoros++; updateStreak(); State.save();
+    // Award rank points for session
+    if(State.rankSystemEnabled){
+      const dur=POMO.durations.pomoDuration;
+      const pts=Math.round(dur*0.6+5); // ~20pts for 25min session
+      addRankEvent(`Focus session: ${task} (${dur}m)`, pts);
+    }
     toast('Session complete! Take a break. 🎉','success');
     POMO.session++;
     if(POMO.session>POMO.durations.sessionGoal){POMO.session=1;resetTimer('long');}
@@ -566,6 +587,14 @@ function recordTaskOutcome(t){
   if(!alreadyRecorded){
     State.stats.missedTasks=State.stats.missedTasks.filter(r=>r.id!==t.id);
     State.stats.doneOnTimeTasks.push({id:t.id,name:t.name,due:t.due||null,completedOn:today,category:t.category||'work'});
+    // Award rank points for task done on time
+    if(State.rankSystemEnabled){
+      const priorityPts={critical:20,high:12,medium:7,low:4,someday:2};
+      const base=priorityPts[t.priority]||7;
+      const onTime=!t.due||t.due>=today;
+      const pts=onTime?Math.round(base*1.5):base;
+      addRankEvent(`✓ ${t.name}${onTime&&t.due?' ⚡ on time':''}`,pts);
+    }
     State.save();
   }
 }
@@ -578,6 +607,12 @@ function auditMissedTasks(){
       const alreadyDone=State.stats.doneOnTimeTasks.some(r=>r.id===t.id);
       if(!alreadyMissed&&!alreadyDone){
         State.stats.missedTasks.push({id:t.id,name:t.name,due:t.due,missedOn:today,category:t.category||'work'});
+        // Deduct rank points for missed task
+        if(State.rankSystemEnabled){
+          const priorityPts={critical:-15,high:-10,medium:-6,low:-3,someday:-1};
+          const pts=priorityPts[t.priority]||-5;
+          addRankEvent(`✗ Missed: ${t.name}`,pts);
+        }
         changed=true;
       }
     }
@@ -705,7 +740,18 @@ function reorderTask(fromId, toId){
   State.save(); renderTaskList();
 }
 function toggleTask(id){const t=State.tasks.find(t=>t.id===id);if(!t)return;t.done=!t.done;t.status=t.done?'done':'not-started';if(t.done)toast('Task done! 🎉','success');State.save();renderTaskList();if(document.getElementById('dashboard').classList.contains('active'))updateDashboard();}
-function deleteTask(id){State.tasks=State.tasks.filter(t=>t.id!==id);State.save();renderTaskList();if(document.getElementById('dashboard').classList.contains('active'))updateDashboard();}
+function deleteTask(id){
+  const t=State.tasks.find(t=>t.id===id);
+  if(t){
+    if(!State.taskTrash) State.taskTrash=[];
+    State.taskTrash.unshift({...t, deletedAt:Date.now()});
+    if(State.taskTrash.length>100) State.taskTrash=State.taskTrash.slice(0,100);
+  }
+  State.tasks=State.tasks.filter(t=>t.id!==id);
+  State.save(); renderTaskList(); updateTasksTrashBadge();
+  if(document.getElementById('dashboard').classList.contains('active'))updateDashboard();
+  toast('Task moved to trash 🗑','normal');
+}
 $('addTaskBtn').addEventListener('click',addTask);
 $('taskInput').addEventListener('keydown',e=>{if(e.key==='Enter')addTask();});
 $$('.filter-btn').forEach(btn=>btn.addEventListener('click',()=>{$$('.filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');taskFilter=btn.dataset.filter;renderTaskList();}));
@@ -1034,7 +1080,30 @@ function toggleBlockDone(key, bid, checked){
   const blk=(State.planner.blocks[key]||[]).find(b=>b.id===bid); if(!blk)return;
   blk.done = checked;
   State.save(); renderDayGrid(key); renderInventory();
-  if(checked) toast('Block marked done! ✓','success');
+  if(checked){
+    toast('Block marked done! ✓','success');
+    // Award rank points for completing a block
+    if(State.rankSystemEnabled){
+      const blockTypePts={focus:10,study:8,creative:7,meeting:5,exercise:6,admin:3,break:1};
+      const base=blockTypePts[blk.type]||4;
+      let dur=timeToMins(blk.end)-timeToMins(blk.start); if(dur<=0) dur+=24*60;
+      dur=Math.max(15,dur);
+      // On-time bonus: block end hasn't passed yet (or today is the block day and within time)
+      const now=new Date();
+      const [y,m,d]=key.split('-').map(Number);
+      const [eh,em]=blk.end.split(':').map(Number);
+      const blockEnd=new Date(y,m-1,d,eh,em,0);
+      const onTime=blockEnd>=now;
+      const pts=Math.round(base*(dur/30))+(onTime?Math.round(base*0.5):0);
+      addRankEvent(`${blk.title} block done${onTime?' ⚡ on time':''}`,pts);
+    }
+  } else {
+    // Deduct points if unchecking
+    if(State.rankSystemEnabled){
+      const blockTypePts={focus:6,study:5,creative:4,meeting:3,exercise:4,admin:2,break:1};
+      addRankEvent(`${blk.title} unchecked`,-Math.round((blockTypePts[blk.type]||3)*0.5));
+    }
+  }
 }
 
 // ── INVENTORY ──
@@ -1245,8 +1314,21 @@ function moveBlock(fromKey, bid, newHour, newMin, toKey){
 
 function deleteBlock(key,id){
   if(!State.planner.blocks[key])return;
+  const blk=State.planner.blocks[key].find(b=>b.id===id);
+  if(blk){
+    if(!State.blockTrash) State.blockTrash=[];
+    State.blockTrash.unshift({...blk, _dateKey:key, deletedAt:Date.now()});
+    if(State.blockTrash.length>100) State.blockTrash=State.blockTrash.slice(0,100);
+    // Deduct rank points for deleted block
+    if(!blk.done && State.rankSystemEnabled){
+      const blockTypePts={focus:10,study:8,creative:7,meeting:5,exercise:6,admin:3,break:1};
+      const pts=blockTypePts[blk.type]||4;
+      addRankEvent(`Deleted ${blk.title}`, -Math.round(pts*0.5));
+    }
+  }
   State.planner.blocks[key]=State.planner.blocks[key].filter(b=>b.id!==id);
-  State.save(); renderDayGrid(key); renderInventory();
+  State.save(); renderDayGrid(key); renderInventory(); updateBlockTrashBadge();
+  toast('Block moved to trash 🗑','normal');
 }
 
 $('addBlockBtn').addEventListener('click',()=>{
@@ -1408,7 +1490,7 @@ function updateStats(){
   // Bar chart
   const today=todayStr(), maxM=Math.max(1,...days.map(d=>s.focusMinutesByDay[d.key]||0));
   $('statsWeekChart').innerHTML=days.map(d=>{
-    const m=s.focusMinutesByDay[d.key]||0,pct=Math.min(100,(m/maxM)*100);
+    const m=s.focusMinutesByDay[d.key]||0,pct=Math.min(110,(m/maxM)*110);
     return `<div class="bar-chart-col">
       <div class="bar-chart-bar${d.key===today?' highlight':''}" style="height:${Math.max(4,pct)}px"></div>
       <div class="bar-chart-label">${d.label}</div>
@@ -1429,14 +1511,41 @@ function updateStats(){
       <div class="breakdown-bar"><div class="breakdown-fill" style="width:${(counts[c]/maxC*100).toFixed(0)}%;background:${colors[c]}"></div></div>
     </div>`).join('')||'<p style="color:var(--text-muted);font-size:13px;font-style:italic">Add tasks to see breakdown</p>';
 
-  // Efficiency
-  const score=Math.min(100,Math.round((s.totalPomodoros*5)+(tasks.filter(t=>t.done).length*3)+(s.currentStreak*2)));
+  // Efficiency — unbounded score based on quality of work
+  // Points per completed task (by priority)
+  const priorityPts={critical:20,high:12,medium:7,low:4,someday:2};
+  const taskPts=tasks.filter(t=>t.done).reduce((sum,t)=>{
+    const base=priorityPts[t.priority]||5;
+    // Bonus if done on time
+    const onTime=State.stats.doneOnTimeTasks.some(r=>r.id===t.id);
+    return sum+base+(onTime?Math.round(base*0.5):0);
+  },0);
+  // Points per focus session (by duration in minutes)
+  // totalPomodoros × current focus duration as a proxy for session length
+  const avgFocusMins = s.totalPomodoros > 0
+    ? Object.values(s.focusMinutesByDay||{}).reduce((a,b)=>a+b,0) / Math.max(1, s.totalPomodoros)
+    : (State.pomo.durations.pomoDuration||25);
+  const sessionPts = Math.round(s.totalPomodoros * Math.max(5, avgFocusMins * 0.6));
+  // Points per checked/done planner block (by type weight)
+  const blockTypePts={focus:10,study:8,creative:7,meeting:5,exercise:6,admin:3,break:1};
+  const blockPts=Object.values(State.planner.blocks||{}).flat().filter(b=>b.done).reduce((sum,b)=>{
+    const base=blockTypePts[b.type]||4;
+    const durMins=b.end&&b.start?(()=>{let s=timeToMins(b.start),e=timeToMins(b.end);if(e<=s)e+=24*60;return Math.max(15,e-s);})():30;
+    return sum+Math.round(base*(durMins/30));
+  },0);
+  // Streak bonus
+  const streakPts=Math.round(s.currentStreak*3);
+  const score=taskPts+sessionPts+blockPts+streakPts;
+  // Ring fills to 100% at 500pts then overflows gracefully
+  const ringMax=500;
   const circ=2*Math.PI*80;
-  $('effProgress').style.strokeDashoffset=circ-(circ*score/100);
-  $('efficiencyValue').textContent=score||'—';
-  const descs={0:'Complete tasks and sessions to build your score.',20:'Good start! Keep the momentum going.',40:"Nice progress. You're building solid habits.",60:"Strong performance. Your focus is sharpening.",80:"Excellent! You're operating at a high level.",95:"Elite. You've mastered time and focus."};
-  const dk=Object.keys(descs).reverse().find(k=>score>=k)||0;
-  $('efficiencyDesc').textContent=descs[dk];
+  const fillPct=Math.min(1,score/ringMax);
+  $('effProgress').style.strokeDashoffset=circ-(circ*fillPct);
+  $('efficiencyValue').textContent=score>0?score:'—';
+  const descs={0:'Complete tasks and sessions to build your score.',50:'Good start! Keep the momentum going.',150:"Nice progress. You're building solid habits.",300:"Strong performance. Your focus is sharpening.",500:"Excellent! You're operating at a high level.",800:"Elite. You've mastered time and focus.",1200:"Legendary. Exceptional consistency and output."};
+  const dk=Object.keys(descs).map(Number).filter(k=>score>=k).pop()||0;
+  const breakdown=`${taskPts} tasks · ${sessionPts} sessions · ${blockPts} blocks · ${streakPts} streak`;
+  $('efficiencyDesc').innerHTML=descs[dk]+'<br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:0.5px">'+breakdown+'</span>';
 
   // Achievements with progress bars
   $('achievementsGrid').innerHTML=achievements.map(a=>{
@@ -1450,6 +1559,7 @@ function updateStats(){
   }).join('');
 
   drawPieChart(tasks);
+  updateRankCard();
 }
 
 // ── LINE GRAPH (crisp, device-pixel-ratio aware) ──
@@ -1661,13 +1771,125 @@ function updateNoteSaved(ts){
 }
 
 function deleteNoteById(id){
+  const note=State.notes.find(n=>n.id===id);
+  if(note){
+    if(!State.noteTrash) State.noteTrash=[];
+    State.noteTrash.unshift({...note, deletedAt:Date.now()});
+    if(State.noteTrash.length>100) State.noteTrash=State.noteTrash.slice(0,100);
+  }
   if(State.activeNoteId===id){
     State.activeNoteId=null;
     $('notesEmpty').style.display='flex'; $('notesEditor').style.display='none';
   }
   State.notes=State.notes.filter(n=>n.id!==id);
-  State.save(); renderNotesList(); toast('Note deleted.','normal');
+  State.save(); renderNotesList(); updateNotesTrashBadge();
+  toast('Note moved to trash 🗑','normal');
 }
+
+// ── TRASH ──
+function updateTasksTrashBadge(){
+  const cnt=(State.taskTrash||[]).length;
+  const badge=$('tasksTrashCount'); if(!badge)return;
+  badge.textContent=cnt; badge.style.display=cnt>0?'inline':'none';
+}
+function updateNotesTrashBadge(){
+  // Notes trash button has no badge currently, can add later
+}
+function openTasksTrash(){
+  const modal=$('tasksTrashModal'); if(!modal)return;
+  const list=$('tasksTrashList');
+  const items=State.taskTrash||[];
+  if(!items.length){ list.innerHTML='<li class="trash-empty-state">Trash is empty.</li>'; }
+  else {
+    list.innerHTML=items.map(t=>`
+      <li class="trash-item">
+        <div class="trash-item-info">
+          <div class="trash-item-name">${t.name}</div>
+          <div class="trash-item-meta">${t.category||'—'} · ${t.priority||'—'} · deleted ${new Date(t.deletedAt||Date.now()).toLocaleDateString()}</div>
+        </div>
+        <div class="trash-item-actions">
+          <button class="trash-restore-btn" onclick="restoreTask(${t.id})">↩ Restore</button>
+          <button class="trash-perm-del-btn" onclick="permDeleteTask(${t.id})">✕</button>
+        </div>
+      </li>`).join('');
+  }
+  modal.style.display='flex';
+}
+function closeTasksTrash(){ $('tasksTrashModal').style.display='none'; }
+function restoreTask(id){
+  const t=(State.taskTrash||[]).find(t=>t.id===id); if(!t)return;
+  State.taskTrash=State.taskTrash.filter(t=>t.id!==id);
+  delete t.deletedAt;
+  State.tasks.unshift(t);
+  State.save(); renderTaskList(); updateTasksTrashBadge(); openTasksTrash();
+  toast('Task restored ✓','success');
+}
+function permDeleteTask(id){
+  State.taskTrash=(State.taskTrash||[]).filter(t=>t.id!==id);
+  State.save(); updateTasksTrashBadge(); openTasksTrash();
+}
+function emptyTasksTrash(){
+  if(!(State.taskTrash||[]).length) return;
+  if(!confirm('Permanently delete all trashed tasks? This cannot be undone.')) return;
+  State.taskTrash=[];
+  State.save(); updateTasksTrashBadge(); openTasksTrash();
+  toast('Trash emptied','normal');
+}
+
+function openNotesTrash(){
+  const modal=$('notesTrashModal'); if(!modal)return;
+  const list=$('notesTrashList');
+  const items=State.noteTrash||[];
+  if(!items.length){ list.innerHTML='<li class="trash-empty-state">Trash is empty.</li>'; }
+  else {
+    list.innerHTML=items.map(n=>`
+      <li class="trash-item">
+        <div class="trash-item-info">
+          <div class="trash-item-name">${n.title||'Untitled'}</div>
+          <div class="trash-item-meta">${n.category||'general'} · deleted ${new Date(n.deletedAt||Date.now()).toLocaleDateString()}</div>
+        </div>
+        <div class="trash-item-actions">
+          <button class="trash-restore-btn" onclick="restoreNote(${n.id})">↩ Restore</button>
+          <button class="trash-perm-del-btn" onclick="permDeleteNote(${n.id})">✕</button>
+        </div>
+      </li>`).join('');
+  }
+  modal.style.display='flex';
+}
+function closeNotesTrash(){ $('notesTrashModal').style.display='none'; }
+function restoreNote(id){
+  const n=(State.noteTrash||[]).find(n=>n.id===id); if(!n)return;
+  State.noteTrash=State.noteTrash.filter(n=>n.id!==id);
+  delete n.deletedAt;
+  State.notes.unshift(n);
+  State.save(); renderNotesList(); openNotesTrash();
+  toast('Note restored ✓','success');
+}
+function permDeleteNote(id){
+  State.noteTrash=(State.noteTrash||[]).filter(n=>n.id!==id);
+  State.save(); openNotesTrash();
+}
+function emptyNotesTrash(){
+  if(!(State.noteTrash||[]).length) return;
+  if(!confirm('Permanently delete all trashed notes? This cannot be undone.')) return;
+  State.noteTrash=[];
+  State.save(); openNotesTrash();
+  toast('Trash emptied','normal');
+}
+
+// Wire up trash buttons
+document.addEventListener('DOMContentLoaded',()=>{
+  const tTaskBtn=$('tasksTrashBtn'); if(tTaskBtn) tTaskBtn.addEventListener('click',openTasksTrash);
+  const tNoteBtn=$('notesTrashBtn'); if(tNoteBtn) tNoteBtn.addEventListener('click',openNotesTrash);
+  const cTaskBtn=$('tasksTrashModalClose'); if(cTaskBtn) cTaskBtn.addEventListener('click',closeTasksTrash);
+  const cNoteBtn=$('notesTrashModalClose'); if(cNoteBtn) cNoteBtn.addEventListener('click',closeNotesTrash);
+  const eTaskBtn=$('emptyTasksTrashBtn'); if(eTaskBtn) eTaskBtn.addEventListener('click',emptyTasksTrash);
+  const eNoteBtn=$('emptyNotesTrashBtn'); if(eNoteBtn) eNoteBtn.addEventListener('click',emptyNotesTrash);
+  // Close on backdrop click
+  const tTaskModal=$('tasksTrashModal'); if(tTaskModal) tTaskModal.addEventListener('click',e=>{if(e.target===tTaskModal)closeTasksTrash();});
+  const tNoteModal=$('notesTrashModal'); if(tNoteModal) tNoteModal.addEventListener('click',e=>{if(e.target===tNoteModal)closeNotesTrash();});
+  updateTasksTrashBadge();
+});
 
 $('addNoteBtn').addEventListener('click',()=>{
   const note={id:Date.now(),title:'New Note',body:'',category:'general',color:'default',created:Date.now(),updated:Date.now()};
@@ -1763,12 +1985,315 @@ function syncNoteOrderFromDOM(){
   State.save();
 }
 
+// ═══════════════════════════════════════════════
+//  RANK SYSTEM
+// ═══════════════════════════════════════════════
+const RANKS = [
+  { id:'bronze',   name:'BRONZE',   title:'Novice Focuser',     icon:'🥉', color:'#cd7f32', min:0,    max:125  },
+  { id:'silver',   name:'SILVER',   title:'Rising Achiever',    icon:'🥈', color:'#c0c0c0', min:125,  max:300  },
+  { id:'gold',     name:'GOLD',     title:'Dedicated Worker',   icon:'🥇', color:'#ffd700', min:300,  max:600  },
+  { id:'platinum', name:'PLATINUM', title:'Elite Performer',    icon:'💎', color:'#e5e4e2', min:600,  max:1100 },
+  { id:'diamond',  name:'DIAMOND',  title:'Master of Focus',    icon:'🔷', color:'#b9f2ff', min:1100, max:2000 },
+  { id:'emerald',  name:'EMERALD',  title:'Legendary Grinder',  icon:'💚', color:'#50c878', min:2000, max:3500 },
+  { id:'insanium', name:'INSANIUM', title:'Transcendent Being', icon:'🌀', color:'#ff00ff', min:3500, max:Infinity },
+];
+
+function getRankForPoints(pts){
+  for(let i=RANKS.length-1;i>=0;i--){ if(pts>=RANKS[i].min) return RANKS[i]; }
+  return RANKS[0];
+}
+
+function addRankEvent(desc, pts){
+  if(!State.rankSystemEnabled) return;
+  if(!State.rank) State.rank = { points:0, events:[] };
+  State.rank.points = Math.max(0, (State.rank.points||0) + pts);
+  State.rank.events = [{ desc, pts, ts:Date.now() }, ...(State.rank.events||[])].slice(0,20);
+  State.save();
+  // Update rank UI if stats page is open
+  if(document.getElementById('stats').classList.contains('active')){
+    updateRankCard();
+  }
+}
+
+function updateRankCard(){
+  const card=$('rankCard'); if(!card)return;
+  const inner=$('rankCardInner'); const disabled=$('rankDisabledNotice');
+  if(!State.rankSystemEnabled){
+    if(inner) inner.style.display='none';
+    if(disabled) disabled.style.display='block';
+    return;
+  }
+  if(inner) inner.style.display='flex';
+  if(disabled) disabled.style.display='none';
+  if(!State.rank) State.rank={points:0,events:[]};
+  const pts=Math.max(0,State.rank.points||0);
+  const rank=getRankForPoints(pts);
+  const nextRank=RANKS[RANKS.indexOf(rank)+1]||null;
+
+  // Apply rank class to card
+  card.className=`card rank-card rank-${rank.id}`;
+  const aura=$('rankAura'); if(aura) aura.className=`rank-aura`;
+
+  $('rankBadgeIcon').textContent=rank.icon;
+  $('rankName').textContent=rank.name;
+  $('rankTitle').textContent=rank.title;
+  $('rankPtsDisplay').textContent=pts.toLocaleString()+' pts';
+
+  // Progress bar
+  if(nextRank){
+    const progress=(pts-rank.min)/(nextRank.min-rank.min);
+    $('rankProgressLabel').textContent=`Progress to ${nextRank.name.charAt(0)+nextRank.name.slice(1).toLowerCase()}`;
+    $('rankProgressPct').textContent=Math.round(progress*100)+'%';
+    $('rankProgressFill').style.width=Math.round(progress*100)+'%';
+  } else {
+    $('rankProgressLabel').textContent='Max Rank Achieved';
+    $('rankProgressPct').textContent='100%';
+    $('rankProgressFill').style.width='100%';
+  }
+
+  // Events list
+  const evList=$('rankEventList');
+  const events=(State.rank.events||[]);
+  if(!events.length){
+    evList.innerHTML='<div style="color:var(--text-muted);font-size:10px;font-family:var(--font-mono);text-align:center;padding:16px 0">No events yet</div>';
+  } else {
+    evList.innerHTML=events.slice(0,10).map(ev=>{
+      const isPos=ev.pts>=0;
+      return `<div class="rank-event-item">
+        <span class="rank-event-desc">${ev.desc}</span>
+        <span class="rank-event-pts ${isPos?'pos':'neg'}">${isPos?'+':''}${ev.pts}</span>
+      </div>`;
+    }).join('');
+  }
+}
+
+// ── RANK SYSTEM TOGGLE (Settings) ──
+function applyRankSystemToggle(){
+  const btn=$('rankSystemToggleBtn'); if(!btn)return;
+  btn.textContent=State.rankSystemEnabled?'◈ Enabled':'○ Disabled';
+  btn.style.background=State.rankSystemEnabled?'':'transparent';
+  btn.style.opacity=State.rankSystemEnabled?'1':'0.6';
+}
+
+document.getElementById('rankSystemToggleBtn')?.addEventListener('click',()=>{
+  State.rankSystemEnabled=!State.rankSystemEnabled;
+  applyRankSystemToggle();
+  State.save();
+  toast(State.rankSystemEnabled?'Rank System enabled ◈':'Rank System disabled','normal');
+  if(document.getElementById('stats').classList.contains('active')) updateRankCard();
+});
+
+// ═══════════════════════════════════════════════
+//  BLOCK TRASH
+// ═══════════════════════════════════════════════
+function updateBlockTrashBadge(){
+  const cnt=(State.blockTrash||[]).length;
+  const badge=$('blockTrashCount'); if(!badge)return;
+  badge.textContent=cnt; badge.style.display=cnt>0?'inline':'none';
+}
+
+function openBlockTrash(){
+  const modal=$('blockTrashModal'); if(!modal)return;
+  const list=$('blockTrashList');
+  const items=State.blockTrash||[];
+  if(!items.length){ list.innerHTML='<li class="trash-empty-state">Trash is empty.</li>'; }
+  else {
+    list.innerHTML=items.map(b=>`
+      <li class="trash-item">
+        <div class="trash-item-info">
+          <div class="trash-item-name">${b.title}</div>
+          <div class="trash-item-meta">${b._dateKey||'—'} · ${b.start}–${b.end} · ${b.type} · deleted ${new Date(b.deletedAt||Date.now()).toLocaleDateString()}</div>
+        </div>
+        <div class="trash-item-actions">
+          <button class="trash-restore-btn" onclick="restoreBlock('${b.id}')">↩ Restore</button>
+          <button class="trash-perm-del-btn" onclick="permDeleteBlock('${b.id}')">✕</button>
+        </div>
+      </li>`).join('');
+  }
+  modal.style.display='flex';
+}
+
+function closeBlockTrash(){ const m=$('blockTrashModal'); if(m) m.style.display='none'; }
+
+function restoreBlock(id){
+  const b=(State.blockTrash||[]).find(b=>b.id===id); if(!b)return;
+  State.blockTrash=State.blockTrash.filter(b=>b.id!==id);
+  const key=b._dateKey||todayStr();
+  delete b.deletedAt; delete b._dateKey;
+  if(!State.planner.blocks[key]) State.planner.blocks[key]=[];
+  State.planner.blocks[key].push(b);
+  State.save(); updateBlockTrashBadge(); openBlockTrash();
+  if(State.zoomedDay===key) renderDayGrid(key);
+  toast('Block restored ✓','success');
+}
+
+function permDeleteBlock(id){
+  State.blockTrash=(State.blockTrash||[]).filter(b=>b.id!==id);
+  State.save(); updateBlockTrashBadge(); openBlockTrash();
+}
+
+function emptyBlockTrash(){
+  if(!(State.blockTrash||[]).length) return;
+  if(!confirm('Permanently delete all trashed blocks? Cannot be undone.')) return;
+  State.blockTrash=[];
+  State.save(); updateBlockTrashBadge(); openBlockTrash();
+  toast('Block trash emptied','normal');
+}
+
+// Wire block trash buttons on DOMContentLoaded
+document.addEventListener('DOMContentLoaded',()=>{
+  const btn=$('blockTrashBtn'); if(btn) btn.addEventListener('click',openBlockTrash);
+  const closeBtn=$('blockTrashModalClose'); if(closeBtn) closeBtn.addEventListener('click',closeBlockTrash);
+  const emptyBtn=$('emptyBlockTrashBtn'); if(emptyBtn) emptyBtn.addEventListener('click',emptyBlockTrash);
+  const modal=$('blockTrashModal'); if(modal) modal.addEventListener('click',e=>{ if(e.target===modal) closeBlockTrash(); });
+  updateBlockTrashBadge();
+  applyRankSystemToggle();
+});
+
+// ═══════════════════════════════════════════════
+//  DEV OPTIONS
+// ═══════════════════════════════════════════════
+document.getElementById('showDevOptionsBtn')?.addEventListener('click',()=>{
+  const card=$('devOptionsCard'), reveal=$('devOptionsRevealWrap');
+  if(card){ card.style.display=''; }
+  if(reveal){ reveal.style.display='none'; }
+  toast('Dev options unlocked ⚙','warn');
+});
+
+document.getElementById('hideDevOptionsBtn')?.addEventListener('click',()=>{
+  const card=$('devOptionsCard'), reveal=$('devOptionsRevealWrap');
+  if(card){ card.style.display='none'; }
+  if(reveal){ reveal.style.display=''; }
+});
+
+document.getElementById('devApplyBtn')?.addEventListener('click',()=>{
+  const focusToday=$('devFocusToday').value;
+  const totalPomodoros=$('devTotalPomodoros').value;
+  const currentStreak=$('devCurrentStreak').value;
+  const bestStreak=$('devBestStreak').value;
+  const doneOnTime=$('devDoneOnTime').value;
+  const missedTasks=$('devMissedTasks').value;
+  const rankPoints=$('devRankPoints').value;
+  const rankSelect=$('devRankSelect')?.value;
+  const focusDate=$('devFocusDate').value;
+  const focusDateMins=$('devFocusDateMins').value;
+
+  if(focusToday!=='') State.stats.focusMinutesByDay[todayStr()]=Math.max(0,parseInt(focusToday)||0);
+  if(totalPomodoros!=='') State.stats.totalPomodoros=Math.max(0,parseInt(totalPomodoros)||0);
+  if(currentStreak!==''){
+    State.stats.currentStreak=Math.max(0,parseInt(currentStreak)||0);
+    State.stats.lastFocusDay=todayStr();
+  }
+  if(bestStreak!=='') State.stats.bestStreak=Math.max(0,parseInt(bestStreak)||0);
+  if(doneOnTime!==''){
+    const target=Math.max(0,parseInt(doneOnTime)||0);
+    // Pad or trim doneOnTimeTasks array
+    while(State.stats.doneOnTimeTasks.length<target) State.stats.doneOnTimeTasks.push({id:Date.now()+Math.random(),name:'Dev task',due:null,completedOn:todayStr(),category:'work'});
+    if(State.stats.doneOnTimeTasks.length>target) State.stats.doneOnTimeTasks=State.stats.doneOnTimeTasks.slice(0,target);
+  }
+  if(missedTasks!==''){
+    const target=Math.max(0,parseInt(missedTasks)||0);
+    while(State.stats.missedTasks.length<target) State.stats.missedTasks.push({id:Date.now()+Math.random(),name:'Dev missed',due:todayStr(),missedOn:todayStr(),category:'work'});
+    if(State.stats.missedTasks.length>target) State.stats.missedTasks=State.stats.missedTasks.slice(0,target);
+  }
+  if(rankPoints!==''){
+    if(!State.rank) State.rank={points:0,events:[]};
+    State.rank.points=Math.max(0,parseInt(rankPoints)||0);
+    State.rank.events=[{desc:'Dev override',pts:State.rank.points,ts:Date.now()},...(State.rank.events||[])].slice(0,20);
+  }
+  if(rankSelect!==undefined && rankSelect!==''){
+    const pts=parseInt(rankSelect)||0;
+    if(!State.rank) State.rank={points:0,events:[]};
+    State.rank.points=pts;
+    const rName=RANKS.find(r=>r.min===pts)?.name||'?';
+    State.rank.events=[{desc:`Dev set rank: ${rName}`,pts,ts:Date.now()},...(State.rank.events||[])].slice(0,20);
+    const sel=$('devRankSelect'); if(sel) sel.value='';
+  }
+  if(focusDate&&focusDateMins!==''){
+    State.stats.focusMinutesByDay[focusDate]=Math.max(0,parseInt(focusDateMins)||0);
+  }
+
+  State.save();
+  updateDashboard();
+  if(document.getElementById('stats').classList.contains('active')) updateStats();
+  toast('Dev stats applied ⚡','success');
+
+  // Clear inputs
+  ['devFocusToday','devTotalPomodoros','devCurrentStreak','devBestStreak','devDoneOnTime','devMissedTasks','devRankPoints','devFocusDate','devFocusDateMins'].forEach(id=>{ const el=$(id); if(el) el.value=''; });
+});
+
+document.getElementById('devResetRankBtn')?.addEventListener('click',()=>{
+  if(!confirm('Reset rank points to 0?')) return;
+  State.rank={points:0,events:[]};
+  State.save();
+  if(document.getElementById('stats').classList.contains('active')) updateRankCard();
+  toast('Rank reset to 0','normal');
+});
+
+// ── DEV: Load Example Data ──
+document.getElementById('devLoadExampleBtn')?.addEventListener('click',()=>{
+  if(!confirm('This will add example tasks, notes, planner blocks, and stats on top of your existing data. Continue?')) return;
+  const today=todayStr();
+  const d=(offset)=>{ const dt=new Date(); dt.setDate(dt.getDate()+offset); return dateStr(dt); };
+
+  // Tasks
+  const exTasks=[
+    {id:Date.now()+1, name:'Design new landing page mockup', category:'work', priority:'high', status:'working', due:d(1), done:false, created:today},
+    {id:Date.now()+2, name:'Read "Atomic Habits" — chapters 5-7', category:'study', priority:'medium', status:'not-started', due:d(2), done:false, created:today},
+    {id:Date.now()+3, name:'30-minute run + stretching', category:'health', priority:'medium', status:'done', due:today, done:true, created:today},
+    {id:Date.now()+4, name:'Send project proposal to client', category:'work', priority:'critical', status:'not-started', due:d(0), done:false, created:today},
+    {id:Date.now()+5, name:'Grocery run — weekly shop', category:'personal', priority:'low', status:'not-started', due:d(1), done:false, created:today},
+    {id:Date.now()+6, name:'Finish React course module 8', category:'study', priority:'high', status:'working', due:d(3), done:false, created:today},
+    {id:Date.now()+7, name:'Monthly budget review', category:'personal', priority:'medium', status:'not-started', due:d(4), done:false, created:today},
+    {id:Date.now()+8, name:'Call dentist for appointment', category:'health', priority:'low', status:'not-started', due:d(5), done:false, created:today},
+  ];
+  State.tasks=[...exTasks, ...State.tasks];
+
+  // Notes
+  const exNotes=[
+    {id:Date.now()+100, title:'Deep Work — Key Takeaways', body:'## Core Idea\nDepth beats shallowness in almost every knowledge-worker profession.\n\n## Rules\n- Work deeply: scheduled, distraction-free sessions\n- Embrace boredom: do not reach for your phone every idle moment\n- Quit social media (or be deliberate about it)\n- Drain the shallows: ruthlessly cut low-value tasks\n\n## My commitment\nTwo 90-min deep work blocks per day, phone in another room.', category:'study', color:'blue', created:Date.now()-86400000, updated:Date.now()-3600000},
+    {id:Date.now()+101, title:'Project Alpha — Sprint Notes', body:'## Goals this sprint\n- Complete API integration\n- Write unit tests for auth module\n- Review PR from Sarah\n\n## Blockers\n- Waiting on design assets from Jake\n- Need prod credentials for staging env\n\n## Done\n- Set up CI pipeline\n- Fixed mobile nav bug', category:'work', color:'orange', created:Date.now()-172800000, updated:Date.now()-7200000},
+    {id:Date.now()+102, title:'Morning Routine Ideas', body:'Try waking up 30 min earlier.\n\nOption A (energising)\n- 6:00 wake, water, stretch\n- 6:15 20 min walk outside\n- 6:35 journal + plan the day\n- 7:00 first deep work block\n\nOption B (gentle)\n- 6:30 wake, meditate 10 min\n- 6:40 coffee + reading\n- 7:00 plan the day', category:'personal', color:'green', created:Date.now()-259200000, updated:Date.now()-86400000},
+  ];
+  State.notes=[...exNotes, ...State.notes];
+
+  // Stats — sprinkle focus minutes across the last 14 days
+  const focusSeed=[95,0,120,75,110,0,80,145,60,90,0,105,50,70];
+  focusSeed.forEach((mins,i)=>{
+    const key=d(-(focusSeed.length-1-i));
+    State.stats.focusMinutesByDay[key]=(State.stats.focusMinutesByDay[key]||0)+mins;
+  });
+  State.stats.totalPomodoros=Math.max(State.stats.totalPomodoros, 28);
+  State.stats.currentStreak=Math.max(State.stats.currentStreak, 4);
+  State.stats.bestStreak=Math.max(State.stats.bestStreak, 9);
+  if(!State.stats.lastFocusDay) State.stats.lastFocusDay=today;
+
+  // Rank points
+  if(!State.rank) State.rank={points:0,events:[]};
+  State.rank.points=(State.rank.points||0)+350;
+  State.rank.events=[{desc:'Example data loaded',pts:350,ts:Date.now()},...(State.rank.events||[])].slice(0,20);
+
+  State.save();
+  updateDashboard();
+  renderTaskList();
+  renderNotesList();
+  if(document.getElementById('stats').classList.contains('active')) updateStats();
+  toast('Example data loaded','success');
+});
+
 // ── SETTINGS PAGE CONTROLS ──
-document.getElementById('settingsThemeSelect')?.addEventListener('change', e => applyTheme(e.target.value, State.lightMode));
+document.querySelectorAll('#settingsThemePicker .tswatch').forEach(btn => {
+  btn.addEventListener('click', () => applyTheme(btn.dataset.theme, State.lightMode));
+});
 document.getElementById('settingsLightModeBtn')?.addEventListener('click', () => applyTheme(State.theme, !State.lightMode));
-// Mobile dark mode toggle
-const mobileModeToggleBtn = document.getElementById('mobileModeToggle');
-if(mobileModeToggleBtn) mobileModeToggleBtn.addEventListener('click', () => applyTheme(State.theme, !State.lightMode));
+// Altayer-style checkbox toggles dark/light mode
+const darkmodeSwitch = document.getElementById('darkmode-switch');
+if(darkmodeSwitch){
+  darkmodeSwitch.addEventListener('change', function(){
+    // Altayer convention: checked = dark mode, unchecked = light mode
+    applyTheme(State.theme, !this.checked);
+  });
+}
 document.getElementById('resetAllDataBtn')?.addEventListener('click', async () => {
   if(!confirm('This will permanently delete all your tasks, notes, planner blocks, and statistics. Are you sure?')) return;
 
@@ -1778,13 +2303,17 @@ document.getElementById('resetAllDataBtn')?.addEventListener('click', async () =
 
   // 2. Reset in-memory State to defaults
   State.tasks = [];
+  State.taskTrash = [];
   State.customColumns = [];
   State.planner = { blocks:{}, weekOffset:0 };
+  State.blockTrash = [];
   State.stats = { focusMinutesByDay:{}, totalPomodoros:0, bestStreak:0, currentStreak:0, lastFocusDay:'', missedTasks:[], doneOnTimeTasks:[] };
   State.notes = [];
+  State.noteTrash = [];
   State.activeNoteId = null;
   State.zoomedDay = null;
   State.statsRange = 'week';
+  State.rank = { points:0, events:[] };
 
   // 3. Persist the empty state immediately
   State.save();
@@ -1803,6 +2332,9 @@ document.getElementById('resetAllDataBtn')?.addEventListener('click', async () =
 (async()=>{
   await State.load();
   applyTheme(State.theme,State.lightMode);
+  applyRankSystemToggle();
+  if(!State.rank) State.rank={points:0,events:[]};
+  if(!State.blockTrash) State.blockTrash=[];
   auditMissedTasks();
   resetTimer();
   updateDashboard();
@@ -2096,6 +2628,7 @@ const SupaSync = {
       // Merge cloud into State
       if(s.tasks)         State.tasks         = s.tasks;
       if(s.planner)       State.planner.blocks = s.planner;
+      if(s.blockTrash)    State.blockTrash     = s.blockTrash;
       if(s.stats)         Object.assign(State.stats, s.stats);
       if(s.pomo)          Object.assign(State.pomo.durations, s.pomo.durations||{});
       if(s.notes)         State.notes         = s.notes;
@@ -2103,6 +2636,8 @@ const SupaSync = {
       if(s.lightMode !== undefined) State.lightMode = s.lightMode;
       if(s.customColumns) State.customColumns = s.customColumns;
       if(s.hasEverRun !== undefined) State.hasEverRun = s.hasEverRun;
+      if(s.rankSystemEnabled !== undefined) State.rankSystemEnabled = s.rankSystemEnabled;
+      if(s.rank)          State.rank          = s.rank;
       // Persist locally too
       State.save();
       // Re-render everything
