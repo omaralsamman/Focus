@@ -99,7 +99,17 @@
         <div class="card mini-pomodoro-card" data-delay="4"><div class="mini-card-label">Quick Focus</div><div class="mini-timer-display" id="dashTimerDisplay">25:00</div><div class="mini-timer-controls"><button class="mini-btn" onclick="goToTimer()">Start Session</button></div><div class="mini-session-type">Deep Focus · 25 min</div></div>
         <div class="card tasks-preview-card" data-delay="5"><div class="mini-card-label">Today's Focus</div><ul class="preview-task-list" id="dashTaskList"><li class="preview-task empty-state">No tasks yet — add some in Tasks ↗</li></ul><button class="text-btn" onclick="showSection('tasks')">View all tasks →</button></div>
         <div class="card tip-card" data-delay="6"><div class="mini-card-label">Technique of the Day</div><h3 class="tip-title" id="tipTitle">The Focus Technique</h3><p class="tip-desc" id="tipDesc">Work in focused 25-minute intervals separated by 5-minute breaks. After 4 sessions, take a longer 15–30 minute break.</p><button class="text-btn" id="nextTipBtn">Next tip →</button></div>
-        <div class="card weekly-card" data-delay="7"><div class="mini-card-label">This Week</div><div class="week-bars" id="weekBars"></div><div class="week-labels"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div></div>
+        <div class="card weekly-card" data-delay="7">
+          <div class="weekly-card-header">
+            <span class="mini-card-label" style="margin-bottom:0" id="weekCardLabel">This Week</span>
+            <div class="week-nav-btns">
+              <button class="week-nav-btn" id="weekNavPrev" title="Previous week">←</button>
+              <button class="week-nav-btn" id="weekNavNext" title="Next week" disabled>→</button>
+            </div>
+          </div>
+          <div class="week-bars" id="weekBars"></div>
+          <div class="week-labels"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
+        </div>
         <div class="card monthly-card" data-delay="8"><div class="mini-card-label">This Month</div><div class="month-grid" id="monthGrid"></div></div>
       </div>
     </section>
@@ -393,17 +403,17 @@
             </div>
             <div class="rank-efficiency-panel">
               <div class="rank-events-title">Efficiency Score</div>
-              <div class="efficiency-ring-wrapper" style="width:120px;height:120px;margin:8px auto 10px">
+              <div class="efficiency-ring-wrapper">
                 <svg class="efficiency-ring" viewBox="0 0 200 200">
                   <circle class="eff-track" cx="100" cy="100" r="80"/>
                   <circle class="eff-progress" id="effProgress" cx="100" cy="100" r="80" stroke-dasharray="502.7" stroke-dashoffset="502.7"/>
                 </svg>
                 <div class="efficiency-center">
-                  <div class="efficiency-value" id="efficiencyValue" style="font-size:22px">—</div>
+                  <div class="efficiency-value" id="efficiencyValue">—</div>
                   <div class="efficiency-label">pts</div>
                 </div>
               </div>
-              <p class="efficiency-desc" id="efficiencyDesc" style="font-size:11px;text-align:center">Complete tasks and sessions to build your score.</p>
+              <p class="efficiency-desc" id="efficiencyDesc" style="display:none"></p>
             </div>
             <div class="rank-events-panel">
               <div class="rank-events-title">Recent Points</div>
