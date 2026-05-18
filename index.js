@@ -118,6 +118,8 @@ function playDone(){
 
 // ── THEME ──
 function applyTheme(theme, light){
+  const isMobile = window.innerWidth <= 768;
+
   document.documentElement.setAttribute('data-theme', theme);
   document.body.classList.toggle('light-mode', !!light);
   document.documentElement.classList.remove('light-mode');
@@ -132,8 +134,22 @@ function applyTheme(theme, light){
   const desktopLbl=document.querySelector('.desktop-focus-toggle');
   if(desktopLbl) desktopLbl.classList.toggle('is-dark', !light);
   State.theme=theme; State.lightMode=!!light;
-  State.save();
-  if(document.getElementById('stats').classList.contains('active')) updateStats();
+
+  // On mobile, defer storage writes + stats update so they don't compete with
+  // the repaint. State.save() hits localStorage, sessionStorage, IndexedDB
+  // AND Supabase — all on the main thread. Pushing to setTimeout(0) lets the
+  // browser paint the theme change first, then saves after the frame settles.
+  const _statsEl = document.getElementById('stats');
+  const _statsActive = _statsEl && _statsEl.classList.contains('active');
+  if(isMobile){
+    setTimeout(()=>{
+      State.save();
+      if(_statsActive) updateStats();
+    }, 0);
+  } else {
+    State.save();
+    if(_statsActive) updateStats();
+  }
 }
 
 // ── NAVIGATION ──
