@@ -1540,7 +1540,7 @@ body.light-mode .bst-time-input { color-scheme:light; }
 .stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:18px; }
 
 /* Row 1: 4 equal stat cards */
-.big-stat-card { grid-column:span 1; text-align:center; padding:14px 10px; }
+.big-stat-card { grid-column:span 1; text-align:center; padding:14px 10px; overflow:hidden; }
 .big-stat-value { font-family:var(--font-mono); font-size:28px; font-weight:300; color:var(--accent); line-height:1; margin-bottom:5px; }
 .big-stat-label { font-family:var(--font-display); font-size:12px; color:var(--text-secondary); margin-bottom:2px; }
 .big-stat-sub { font-family:var(--font-mono); font-size:9px; color:var(--text-muted); }
@@ -1592,7 +1592,7 @@ body.light-mode .bst-time-input { color-scheme:light; }
 /* Row 2: line graph (3 cols) + pie chart (1 col) */
 .line-graph-card { grid-column:span 3; overflow:hidden; }
 /* Row 3: bar chart (2 cols) + breakdown (1 col) + achievements (1 col) */
-.chart-card { grid-column:span 2; overflow:hidden; }
+.chart-card { grid-column:span 2; overflow:visible; }
 .breakdown-card { grid-column:span 1; }
 .line-chart-container { position:relative; width:100%; height:180px; overflow:hidden; }
 .line-chart-container canvas { position:absolute; top:0; left:0; width:100% !important; height:100% !important; }
@@ -1603,13 +1603,13 @@ body.light-mode .bst-time-input { color-scheme:light; }
 .gray-dot { background:var(--text-muted); }
 /* Row 3 cont: achievements (1 col) */
 .achievements-card { grid-column:span 1; }
-.bar-chart { display:flex; align-items:stretch; gap:7px; height:150px; overflow:hidden; position:relative; }
+.bar-chart { display:flex; align-items:stretch; gap:7px; height:150px; overflow:visible; position:relative; padding-top:16px; }
 .bar-chart-col { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; min-width:0; justify-content:flex-end; }
 .bar-chart-bar { width:100%; border-radius:5px 5px 0 0; min-height:4px; max-height:110px; transition:height 0.8s ease; flex-shrink:0; }
 .bar-chart-bar.highlight { background:linear-gradient(180deg,#00e676,#4dd87a); box-shadow:0 0 12px rgba(77,216,122,0.5); }
 .bar-chart-bar:not(.highlight) { background:rgba(77,216,122,0.18); border:1px solid rgba(77,216,122,0.12); }
 .bar-chart-label { font-family:var(--font-mono); font-size:10px; color:var(--text-muted); flex-shrink:0; }
-.bar-chart-val { font-family:var(--font-mono); font-size:9px; color:var(--text-muted); flex-shrink:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; order:-1; height:14px; }
+.bar-chart-val { font-family:var(--font-mono); font-size:9px; color:var(--text-muted); flex-shrink:0; white-space:nowrap; overflow:visible; max-width:100%; order:-1; height:14px; }
 .efficiency-card { grid-column:span 2; text-align:center; display:none; }
 /* achievements-card span set above (span 1 desktop) */
 .breakdown-list { display:flex; flex-direction:column; gap:11px; }
@@ -1883,8 +1883,9 @@ body.light-mode .note-color-pill.active { border-color:rgba(0,0,0,0.70); box-sha
   .efficiency-ring-wrapper { width:120px; height:120px; margin-bottom:8px; }
   .efficiency-value { font-size:22px; }
   /* Bar chart compact */
-  .bar-chart { height:90px; }
+  .bar-chart { height:106px; padding-top:18px; overflow:visible; }
   .bar-chart-bar { max-height:66px !important; }
+  .bar-chart-val { font-size:8px; }
   /* Line chart compact */
   .line-chart-container { height:130px; }
   /* Line graph legend smaller */
@@ -3988,4 +3989,228 @@ body.light-mode .dev-apply-btn:hover { background: #DC2626; color: #fff; }
 }
 @media (max-width: 480px) {
   .rank-card { grid-column: span 2; }
+}
+/* ═══════════════════════════════════════════════
+   MOBILE PERFORMANCE OPTIMIZATIONS
+   GPU-friendly, repaint-minimized animations
+   ═══════════════════════════════════════════════ */
+
+/* ── COMPOSITOR HINTS — promote animated layers ── */
+.orb-1, .orb-2, .orb-3 {
+  will-change: transform;
+  transform: translateZ(0);
+}
+.rank-aura::before,
+.rank-aura::after {
+  will-change: transform;
+  transform: translateZ(0);
+}
+.rank-badge-icon {
+  will-change: transform;
+  transform: translateZ(0);
+}
+.rank-progress-fill {
+  will-change: width;
+}
+.focus-toggle-ball {
+  will-change: transform;
+}
+
+/* ── MOBILE — aggressive perf overrides ── */
+@media (max-width: 768px) {
+
+  /* 1. Remove backdrop-filter — single biggest GPU drain on mobile */
+  .mobile-topbar,
+  .mobile-nav {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* 2. Orbs: smaller, lower opacity, longer/simpler animation, NO scale() */
+  .orb-1 {
+    width: 400px !important;
+    height: 400px !important;
+    opacity: 0.10 !important;
+    animation: drift1-mobile 30s ease-in-out infinite alternate !important;
+  }
+  .orb-2 {
+    width: 300px !important;
+    height: 300px !important;
+    opacity: 0.08 !important;
+    animation: drift2-mobile 38s ease-in-out infinite alternate !important;
+  }
+  .orb-3 {
+    width: 240px !important;
+    height: 240px !important;
+    opacity: 0.07 !important;
+    animation: drift3-mobile 26s ease-in-out infinite alternate !important;
+  }
+  /* translate-only drifts — no scale, no blur change, stays on compositor */
+  @keyframes drift1-mobile { from{transform:translate3d(0,0,0)} to{transform:translate3d(-50px,70px,0)} }
+  @keyframes drift2-mobile { from{transform:translate3d(0,0,0)} to{transform:translate3d(70px,-50px,0)} }
+  @keyframes drift3-mobile { from{transform:translate3d(0,0,0)} to{transform:translate3d(-30px,30px,0)} }
+
+  /* 3. Card animations — keep the fadeIn but remove hover transforms
+        hover transforms cause paint+composite on every touch event */
+  .card:hover {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+  .card {
+    transition: border-color 0.2s !important;
+  }
+
+  /* 4. Dark/light mode toggle — fast targeted transition on mobile.
+        Only animate background-color + color; these are cheap and don't
+        cause layout or excessive paint. border-color + box-shadow are
+        excluded — they trigger paint on mobile GPUs every frame.
+        The previous 0s instant-kill caused a jarring flash with no feedback. */
+  body,
+  .sidebar,
+  .mobile-topbar,
+  .mobile-nav,
+  .card {
+    transition: background-color 0.18s ease, color 0.18s ease !important;
+  }
+  .ambient-bg {
+    transition: opacity 0.18s ease !important;
+  }
+  /* Toggle-ball stays compositor-friendly */
+  .focus-toggle-ball {
+    transition: transform 0.25s ease !important;
+  }
+  /* Keep stat-fill width animation */
+  .stat-fill {
+    transition: width 0.8s ease !important;
+  }
+  /* Keep week bar height animation */
+  .week-bar {
+    transition: height 0.6s ease !important;
+  }
+
+  /* 5. Section fade-in — simpler, shorter, GPU-only */
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translate3d(0, 10px, 0); }
+    to   { opacity: 1; transform: translate3d(0, 0, 0); }
+  }
+  .section { animation-duration: 0.25s !important; }
+
+  /* 6. Card entrance — simpler translate3d only */
+  @keyframes cardIn {
+    from { opacity: 0; transform: translate3d(0, 12px, 0); }
+    to   { opacity: 1; transform: translate3d(0, 0, 0); }
+  }
+
+  /* 7. Task slide — same */
+  @keyframes taskSlideIn {
+    from { opacity: 0; transform: translate3d(-8px, 0, 0); }
+    to   { opacity: 1; transform: translate3d(0, 0, 0); }
+  }
+
+  /* 8. Rank card — contain layout to avoid large repaint regions */
+  .rank-card {
+    contain: layout style;
+  }
+
+  /* 9. INSANIUM on mobile — replace spinning conic blurs with static glow
+        conic-gradient + blur(70px) + rotation = worst-case GPU scenario */
+  .rank-insanium .rank-aura::before {
+    background: radial-gradient(circle, rgba(255,0,255,0.5) 0%, rgba(0,255,255,0.3) 50%, transparent 75%) !important;
+    filter: blur(50px) !important;
+    animation: none !important;
+    width: 320px !important;
+    height: 320px !important;
+    opacity: 0.3 !important;
+  }
+  .rank-insanium .rank-aura::after {
+    background: radial-gradient(circle, rgba(0,255,255,0.4) 0%, rgba(255,0,255,0.2) 50%, transparent 75%) !important;
+    filter: blur(40px) !important;
+    animation: none !important;
+    width: 200px !important;
+    height: 200px !important;
+    opacity: 0.22 !important;
+  }
+
+  /* Insanium text glow: reduce to simple color cycle, no text-shadow change
+     text-shadow animation forces repaint every frame */
+  .rank-insanium .rank-name {
+    animation: insaniumTextGlow-mobile 3s ease-in-out infinite !important;
+    text-shadow: 0 0 20px rgba(255, 0, 255, 0.6) !important;
+  }
+  @keyframes insaniumTextGlow-mobile {
+    0%, 100% { color: #ff88ff; }
+    33%       { color: #88ffff; }
+    66%       { color: #ffff88; }
+  }
+
+  /* Insanium progress bar: static gradient instead of animated background-position */
+  .rank-insanium .rank-progress-fill {
+    background: linear-gradient(90deg, #8800cc, #ff00ff, #00ffff) !important;
+    background-size: 100% 100% !important;
+    animation: none !important;
+  }
+
+  /* 10. Rank aura animations for diamond/emerald — slow them down on mobile */
+  .rank-diamond .rank-aura::before,
+  .rank-diamond .rank-aura::after,
+  .rank-emerald .rank-aura::before,
+  .rank-emerald .rank-aura::after {
+    animation-duration: 14s !important;
+  }
+
+  /* 11. rankIconFloat — keep charm but remove scale() */
+  @keyframes rankIconFloat {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50%       { transform: translate3d(0, -5px, 0); }
+  }
+
+  /* 12. progressSheen — keep but throttle to opacity-only (compositor) */
+  /* already opacity-only, just slow it down */
+  .rank-progress-fill::after {
+    animation-duration: 3s !important;
+  }
+
+  /* 13. Mini-btn / ctrl-btn hover scale — remove on mobile (touch = no hover anyway) */
+  .mini-btn:hover,
+  .ctrl-btn.primary:hover {
+    transform: none !important;
+  }
+
+  /* 14. Ring progress filter — drop-shadow is expensive; reduce on mobile */
+  .ring-progress {
+    filter: drop-shadow(0 0 4px var(--accent-glow)) !important;
+  }
+
+  /* 15. Grain texture — it's fine as a static image; just confirm no animation */
+  .grain {
+    animation: none !important;
+  }
+
+  /* 16. Focus toggle — add GPU layer */
+  .focus-toggle-label {
+    transform: translateZ(0);
+  }
+}
+
+/* ── EXTRA SMALL PHONES ── */
+@media (max-width: 480px) {
+  /* Reduce orb blur on tiny screens — blur is paint-side, not compositor */
+  .orb-1, .orb-2, .orb-3 {
+    filter: blur(60px) !important;
+  }
+  /* Insanium aura blurs also reduced */
+  .rank-insanium .rank-aura::before { filter: blur(35px) !important; }
+  .rank-insanium .rank-aura::after  { filter: blur(28px) !important; }
+}
+
+/* ── REDUCED MOTION RESPECT ── */
+@media (prefers-reduced-motion: reduce) {
+  .orb-1, .orb-2, .orb-3 { animation: none !important; }
+  .rank-aura::before, .rank-aura::after { animation: none !important; }
+  .rank-badge-icon { animation: none !important; }
+  .rank-insanium .rank-name { animation: none !important; }
+  .rank-insanium .rank-progress-fill { animation: none !important; }
+  .rank-progress-fill::after { animation: none !important; }
+  .section { animation: none !important; }
+  .card[data-delay] { animation: none !important; opacity: 1 !important; }
 }
