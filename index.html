@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <title>Focus — Time & Work Mastery</title>
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
 </head>
@@ -18,7 +19,14 @@
     </div>
     <div class="mobile-topbar-controls">
       
-      <button class="mobile-mode-toggle" id="mobileModeToggle" title="Toggle light/dark">☽</button>
+      <div class="focus-dark-toggle">
+        <input type="checkbox" id="darkmode-switch" aria-label="Toggle dark/light mode">
+        <label for="darkmode-switch" class="focus-toggle-label">
+          <i class="fas fa-moon"></i>
+          <i class="fas fa-sun"></i>
+          <span class="focus-toggle-ball"></span>
+        </label>
+      </div>
       <button class="mobile-settings-btn" id="mobileSettingsBtn" title="Settings" onclick="showSection('settings')">⚙</button>
     </div>
   </div>
@@ -35,6 +43,11 @@
     <div class="logo">
       <span class="logo-mark">F</span>
       <span class="logo-text">FOCUS</span>
+      <label for="darkmode-switch" class="focus-toggle-label desktop-focus-toggle" title="Toggle dark/light mode" aria-label="Toggle dark/light mode">
+        <i class="fas fa-moon"></i>
+        <i class="fas fa-sun"></i>
+        <span class="focus-toggle-ball"></span>
+      </label>
     </div>
     <ul class="nav-links">
       <li class="nav-item active" data-section="dashboard"><span class="nav-icon">◈</span><span class="nav-label">Dashboard</span></li>
@@ -171,6 +184,9 @@
     <section class="section" id="tasks">
       <header class="section-header">
         <div><p class="section-label">Task Manager</p><h1 class="section-title">What Needs Doing</h1></div>
+        <div class="tasks-header-right">
+          <button class="trash-toggle-btn add-task-btn" id="tasksTrashBtn" title="View deleted tasks">🗑 Trash <span class="trash-count-badge" id="tasksTrashCount" style="display:none">0</span></button>
+        </div>
       </header>
       <div class="tasks-layout">
         <div class="card add-task-card">
@@ -217,6 +233,7 @@
       <header class="section-header">
         <div><p class="section-label">Schedule</p><h1 class="section-title">Planner</h1></div>
         <div class="planner-header-right">
+          <button class="block-trash-btn" id="blockTrashBtn" title="View deleted blocks">🗑 Blocks <span class="block-trash-count-badge" id="blockTrashCount" style="display:none">0</span></button>
           <div class="planner-view-toggle" id="plannerViewToggle">
             <button class="pvt-btn active" id="weekViewTab" data-view="week">Week</button>
             <button class="pvt-btn" id="monthViewTab" data-view="month">Month</button>
@@ -304,11 +321,14 @@
         </div>
       </header>
       <div class="stats-grid">
+
+        <!-- Row 1: 4 summary stat cards -->
         <div class="card big-stat-card" data-delay="0"><div class="big-stat-value" id="totalFocusHours">0h</div><div class="big-stat-label">Total Focus Hours</div><div class="big-stat-sub">All time</div></div>
         <div class="card big-stat-card" data-delay="1"><div class="big-stat-value" id="totalPomodoros">0</div><div class="big-stat-label">Sessions Done</div><div class="big-stat-sub">All time</div></div>
         <div class="card big-stat-card" data-delay="2"><div class="big-stat-value" id="totalTasksDone">0</div><div class="big-stat-label">Tasks Finished</div><div class="big-stat-sub">All time</div></div>
         <div class="card big-stat-card" data-delay="3"><div class="big-stat-value" id="bestStreak">0</div><div class="big-stat-label">Best Streak</div><div class="big-stat-sub">Days in a row</div></div>
 
+        <!-- Row 2: Line graph (wide) + Pie chart (narrow) -->
         <div class="card line-graph-card" data-delay="4">
           <div class="mini-card-label" id="lineGraphLabel">Focus Over Time (minutes)</div>
           <div class="line-chart-container"><canvas id="focusLineChart"></canvas></div>
@@ -319,32 +339,7 @@
           </div>
         </div>
 
-        <div class="card chart-card" data-delay="5">
-          <div class="mini-card-label" id="barChartLabel">Daily Focus (minutes)</div>
-          <div class="bar-chart" id="statsWeekChart"></div>
-        </div>
-
-        <div class="card breakdown-card" data-delay="6">
-          <div class="mini-card-label">Task Breakdown</div>
-          <div class="breakdown-list" id="breakdownList"></div>
-        </div>
-
-        <div class="card efficiency-card" data-delay="7">
-          <div class="mini-card-label">Efficiency Score</div>
-          <div class="efficiency-ring-wrapper">
-            <svg class="efficiency-ring" viewBox="0 0 200 200">
-              <circle class="eff-track" cx="100" cy="100" r="80"/>
-              <circle class="eff-progress" id="effProgress" cx="100" cy="100" r="80" stroke-dasharray="502.7" stroke-dashoffset="502.7"/>
-            </svg>
-            <div class="efficiency-center">
-              <div class="efficiency-value" id="efficiencyValue">—</div>
-              <div class="efficiency-label">Score</div>
-            </div>
-          </div>
-          <p class="efficiency-desc" id="efficiencyDesc">Complete tasks and sessions to build your score.</p>
-        </div>
-
-        <div class="card pie-chart-card" data-delay="8">
+        <div class="card pie-chart-card" data-delay="5">
           <div class="mini-card-label">Tasks: On Time vs Missed</div>
           <div class="pie-chart-wrap">
             <svg id="taskPieChart" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -357,9 +352,69 @@
           <div id="pieChartStats" style="margin-top:10px;font-family:var(--font-mono);font-size:11px;color:var(--text-muted);text-align:center"></div>
         </div>
 
-        <div class="card achievements-card" data-delay="9">
+        <!-- Row 3: Bar chart + Breakdown + Achievements -->
+        <div class="card chart-card" data-delay="6">
+          <div class="mini-card-label" id="barChartLabel">Daily Focus (minutes)</div>
+          <div class="bar-chart" id="statsWeekChart"></div>
+        </div>
+
+        <div class="card breakdown-card" data-delay="7">
+          <div class="mini-card-label">Task Breakdown</div>
+          <div class="breakdown-list" id="breakdownList"></div>
+        </div>
+
+        <div class="card achievements-card" data-delay="8">
           <div class="mini-card-label">Achievements</div>
           <div class="achievements-grid" id="achievementsGrid"></div>
+        </div>
+
+        <!-- RANK CARD -->
+        <div class="card rank-card" id="rankCard" data-delay="10">
+          <div class="rank-card-inner" id="rankCardInner">
+            <div class="rank-aura" id="rankAura"></div>
+            <div class="rank-info" id="rankInfo">
+              <div class="rank-badge-wrap">
+                <div class="rank-badge-icon" id="rankBadgeIcon">🥉</div>
+                <div>
+                  <div class="rank-name" id="rankName">BRONZE</div>
+                  <div class="rank-title" id="rankTitle">Novice Focuser</div>
+                  <div class="rank-pts-display" id="rankPtsDisplay">0 pts</div>
+                </div>
+              </div>
+              <div class="rank-progress-wrap">
+                <div class="rank-progress-label">
+                  <span id="rankProgressLabel">Progress to Silver</span>
+                  <span id="rankProgressPct">0%</span>
+                </div>
+                <div class="rank-progress-track">
+                  <div class="rank-progress-fill" id="rankProgressFill" style="width:0%"></div>
+                </div>
+              </div>
+            </div>
+            <div class="rank-efficiency-panel">
+              <div class="rank-events-title">Efficiency Score</div>
+              <div class="efficiency-ring-wrapper" style="width:120px;height:120px;margin:8px auto 10px">
+                <svg class="efficiency-ring" viewBox="0 0 200 200">
+                  <circle class="eff-track" cx="100" cy="100" r="80"/>
+                  <circle class="eff-progress" id="effProgress" cx="100" cy="100" r="80" stroke-dasharray="502.7" stroke-dashoffset="502.7"/>
+                </svg>
+                <div class="efficiency-center">
+                  <div class="efficiency-value" id="efficiencyValue" style="font-size:22px">—</div>
+                  <div class="efficiency-label">pts</div>
+                </div>
+              </div>
+              <p class="efficiency-desc" id="efficiencyDesc" style="font-size:11px;text-align:center">Complete tasks and sessions to build your score.</p>
+            </div>
+            <div class="rank-events-panel">
+              <div class="rank-events-title">Recent Points</div>
+              <div class="rank-event-list" id="rankEventList">
+                <div style="color:var(--text-muted);font-size:10px;font-family:var(--font-mono);text-align:center;padding:16px 0">Complete tasks &amp; sessions to earn points</div>
+              </div>
+            </div>
+          </div>
+          <div class="rank-disabled-notice" id="rankDisabledNotice" style="display:none">
+            🔒 Rank System is disabled — enable it in Settings → Appearance
+          </div>
         </div>
       </div>
     </section>
@@ -369,6 +424,7 @@
       <header class="section-header">
         <div><p class="section-label">Brain Dump</p><h1 class="section-title">Notes</h1></div>
         <div class="notes-header-right">
+          <button class="add-task-btn trash-toggle-btn" id="notesTrashBtn" title="Trash">🗑 Trash</button>
           <button class="add-task-btn" id="addNoteBtn">+ New Note</button>
         </div>
       </header>
@@ -430,13 +486,13 @@
                 <span class="settings-row-label">Theme</span>
                 <span class="settings-row-desc">Choose your colour palette</span>
               </div>
-              <select id="settingsThemeSelect" class="theme-select settings-select">
-                <option value="midnight">Midnight</option>
-                <option value="forest">Forest</option>
-                <option value="sunset">Sunset</option>
-                <option value="arctic">Arctic</option>
-                <option value="rose">Rose Gold</option>
-              </select>
+              <div class="theme-swatch-picker" id="settingsThemePicker">
+                <button class="tswatch" data-theme="midnight"><span class="tswatch-dots"><span style="background:#e8a840"></span><span style="background:#4a5fe8"></span><span style="background:#9b6ce8"></span></span><span>Midnight</span></button>
+                <button class="tswatch" data-theme="forest"><span class="tswatch-dots"><span style="background:#4ecf70"></span><span style="background:#2a8f45"></span><span style="background:#6dcd6d"></span></span><span>Forest</span></button>
+                <button class="tswatch" data-theme="sunset"><span class="tswatch-dots"><span style="background:#f07340"></span><span style="background:#e83a5a"></span><span style="background:#f0b030"></span></span><span>Sunset</span></button>
+                <button class="tswatch" data-theme="arctic"><span class="tswatch-dots"><span style="background:#3abaff"></span><span style="background:#2060cf"></span><span style="background:#50d8f8"></span></span><span>Arctic</span></button>
+                <button class="tswatch" data-theme="rose"><span class="tswatch-dots"><span style="background:#f05090"></span><span style="background:#c03060"></span><span style="background:#ff90c0"></span></span><span>Rose</span></button>
+              </div>
             </div>
             <div class="settings-row">
               <div class="settings-row-info">
@@ -444,6 +500,13 @@
                 <span class="settings-row-desc">Switch between dark and light interface</span>
               </div>
               <button class="settings-toggle-btn" id="settingsLightModeBtn">☽ Dark</button>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-info">
+                <span class="settings-row-label">Rank System</span>
+                <span class="settings-row-desc">Show rank progression and aura in Stats — earn points for focus sessions, tasks, and planner blocks</span>
+              </div>
+              <button class="settings-toggle-btn" id="rankSystemToggleBtn">◈ Enabled</button>
             </div>
           </div>
         </div>
@@ -516,11 +579,106 @@
             <div class="settings-row">
               <div class="settings-row-info">
                 <span class="settings-row-label">FOCUS</span>
-                <span class="settings-row-desc">Version 1.3 — Your personal time & work mastery tool. All data is stored locally in your browser.</span>
+                <span class="settings-row-desc">Version 0.8 — Your personal time & work mastery tool. All data is stored locally in your browser.</span>
               </div>
             </div>
           </div>
         </div>
+
+        <!-- DEV OPTIONS -->
+        <div class="card settings-card dev-options-card" data-delay="4" id="devOptionsCard" style="display:none">
+          <div class="mini-card-label" style="padding:16px 24px 0;margin:0">⚠ Dev Options</div>
+          <div class="settings-section-body">
+
+            <div class="dev-toggle-row" style="border-top:none;padding-top:10px">
+              <div>
+                <div class="dev-toggle-label">Developer Mode</div>
+                <div class="dev-toggle-sub">EXPOSED — handle with care</div>
+              </div>
+              <button class="settings-danger-btn" id="hideDevOptionsBtn" style="font-size:12px;padding:6px 14px">Hide</button>
+            </div>
+
+            <div class="dev-section-header">Manually Set Statistics</div>
+            <div class="dev-stat-grid">
+              <div class="dev-stat-item">
+                <label class="dev-stat-label" for="devFocusToday">Focus mins today</label>
+                <input type="number" id="devFocusToday" class="dev-stat-input" placeholder="e.g. 120" min="0" />
+              </div>
+              <div class="dev-stat-item">
+                <label class="dev-stat-label" for="devTotalPomodoros">Total sessions</label>
+                <input type="number" id="devTotalPomodoros" class="dev-stat-input" placeholder="e.g. 50" min="0" />
+              </div>
+              <div class="dev-stat-item">
+                <label class="dev-stat-label" for="devCurrentStreak">Current streak (days)</label>
+                <input type="number" id="devCurrentStreak" class="dev-stat-input" placeholder="e.g. 7" min="0" />
+              </div>
+              <div class="dev-stat-item">
+                <label class="dev-stat-label" for="devBestStreak">Best streak (days)</label>
+                <input type="number" id="devBestStreak" class="dev-stat-input" placeholder="e.g. 14" min="0" />
+              </div>
+              <div class="dev-stat-item">
+                <label class="dev-stat-label" for="devDoneOnTime">Tasks done on time</label>
+                <input type="number" id="devDoneOnTime" class="dev-stat-input" placeholder="e.g. 20" min="0" />
+              </div>
+              <div class="dev-stat-item">
+                <label class="dev-stat-label" for="devMissedTasks">Missed tasks</label>
+                <input type="number" id="devMissedTasks" class="dev-stat-input" placeholder="e.g. 3" min="0" />
+              </div>
+              <div class="dev-stat-item">
+                <label class="dev-stat-label" for="devRankPoints">Rank points (override)</label>
+                <input type="number" id="devRankPoints" class="dev-stat-input" placeholder="e.g. 500" min="0" />
+              </div>
+              <div class="dev-stat-item">
+                <label class="dev-stat-label" for="devRankSelect">Set rank directly</label>
+                <select id="devRankSelect" class="dev-stat-input" style="cursor:pointer">
+                  <option value="">— pick a rank —</option>
+                  <option value="0">🥉 Bronze</option>
+                  <option value="125">🥈 Silver</option>
+                  <option value="300">🥇 Gold</option>
+                  <option value="600">💎 Platinum</option>
+                  <option value="1100">🔷 Diamond</option>
+                  <option value="2000">💚 Emerald</option>
+                  <option value="3500">🌀 Insanium</option>
+                </select>
+              </div>
+              <div class="dev-stat-item">
+                <label class="dev-stat-label" for="devFocusDate">Set focus for date</label>
+                <input type="date" id="devFocusDate" class="dev-stat-input" />
+              </div>
+            </div>
+            <div style="padding:0 24px 4px">
+              <div class="dev-stat-item" style="padding-bottom:8px">
+                <label class="dev-stat-label" for="devFocusDateMins">Focus mins for above date</label>
+                <input type="number" id="devFocusDateMins" class="dev-stat-input" placeholder="e.g. 90" min="0" />
+              </div>
+            </div>
+            <button class="dev-apply-btn" id="devApplyBtn">⚡ Apply Dev Stats</button>
+
+            <div class="dev-section-header">Example Data</div>
+            <div class="settings-row" style="padding-bottom:16px">
+              <div class="settings-row-info">
+                <span class="settings-row-label">Load Example Data</span>
+                <span class="settings-row-desc">Populate tasks, notes, planner blocks, and stats with realistic demo data</span>
+              </div>
+              <button class="dev-apply-btn" id="devLoadExampleBtn" style="font-size:12px;padding:8px 14px">📦 Load</button>
+            </div>
+
+            <div class="dev-section-header">Danger Zone</div>
+            <div class="settings-row" style="padding-bottom:16px">
+              <div class="settings-row-info">
+                <span class="settings-row-label">Reset Rank Points Only</span>
+                <span class="settings-row-desc">Zero out rank points without touching other data</span>
+              </div>
+              <button class="settings-danger-btn" id="devResetRankBtn" style="font-size:12px">Reset Rank</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dev Options reveal button -->
+        <div style="text-align:center;padding:4px 0 8px" id="devOptionsRevealWrap">
+          <button class="text-btn" id="showDevOptionsBtn" style="font-size:10px;opacity:0.35;letter-spacing:2px">⚙ DEV OPTIONS</button>
+        </div>
+
       </div>
     </section>
 
@@ -584,6 +742,54 @@
   </div>
 
   
+  <!-- Tasks Trash Modal -->
+  <div class="modal-overlay trash-modal" id="tasksTrashModal" style="display:none">
+    <div class="modal-box trash-modal-box">
+      <div class="modal-header">
+        <span>🗑 Deleted Tasks</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="settings-danger-btn" id="emptyTasksTrashBtn" style="font-size:11px;padding:5px 10px">Empty Trash</button>
+          <button class="modal-close" id="tasksTrashModalClose">✕</button>
+        </div>
+      </div>
+      <div class="trash-modal-body">
+        <ul class="trash-list" id="tasksTrashList"><li class="trash-empty-state">Trash is empty.</li></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notes Trash Modal -->
+  <div class="modal-overlay trash-modal" id="notesTrashModal" style="display:none">
+    <div class="modal-box trash-modal-box">
+      <div class="modal-header">
+        <span>🗑 Deleted Notes</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="settings-danger-btn" id="emptyNotesTrashBtn" style="font-size:11px;padding:5px 10px">Empty Trash</button>
+          <button class="modal-close" id="notesTrashModalClose">✕</button>
+        </div>
+      </div>
+      <div class="trash-modal-body">
+        <ul class="trash-list" id="notesTrashList"><li class="trash-empty-state">Trash is empty.</li></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Block Trash Modal -->
+  <div class="modal-overlay trash-modal" id="blockTrashModal" style="display:none">
+    <div class="modal-box trash-modal-box">
+      <div class="modal-header">
+        <span>🗑 Deleted Blocks</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="settings-danger-btn" id="emptyBlockTrashBtn" style="font-size:11px;padding:5px 10px">Empty Trash</button>
+          <button class="modal-close" id="blockTrashModalClose">✕</button>
+        </div>
+      </div>
+      <div class="trash-modal-body">
+        <ul class="trash-list" id="blockTrashList"><li class="trash-empty-state">Trash is empty.</li></ul>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
