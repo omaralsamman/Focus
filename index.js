@@ -160,7 +160,7 @@ function showSection(name){
   document.querySelectorAll(`[data-section="${name}"]`).forEach(el=>el.classList.add('active'));
   if(name==='dashboard') updateDashboard();
   if(name==='pomodoro'){ applyPomoModeColors(); }
-  if(name==='stats'){ auditMissedTasks(); updateStats(); }
+  if(name==='stats'){ auditMissedTasks(); requestAnimationFrame(()=>{ requestAnimationFrame(updateStats); }); }
   if(name==='planner') renderPlanner();
   if(name==='tasks') renderTaskList();
   if(name==='notes') renderNotesList();
@@ -228,14 +228,32 @@ function updateDashboard(){
   renderWeekBars(); renderMonthGrid();
 }
 
+let dashWeekOffset = 0;
+
 function renderWeekBars(){
-  const c=$('weekBars'), today=todayStr(), days=getWeekDays(0);
+  const c=$('weekBars'); if(!c) return;
+  const today=todayStr(), days=getWeekDays(dashWeekOffset);
   const max=Math.max(1,...days.map(d=>State.stats.focusMinutesByDay[d]||0));
   c.innerHTML=days.map(d=>{
     const m=State.stats.focusMinutesByDay[d]||0;
     return `<div class="week-bar${d===today?' today':''}" style="height:${Math.max(4,(m/max)*72)}px" title="${m}m"></div>`;
   }).join('');
+  // Update label
+  const lbl=$('weekCardLabel');
+  if(lbl){
+    if(dashWeekOffset===0) lbl.textContent='This Week';
+    else if(dashWeekOffset===-1) lbl.textContent='Last Week';
+    else{
+      const mon=new Date(days[0]), sun=new Date(days[6]);
+      const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+      lbl.textContent=`${fmt(mon)} – ${fmt(sun)}`;
+    }
+  }
+  // Disable next button when already on current week
+  const nextBtn=$('weekNavNext');
+  if(nextBtn) nextBtn.disabled = dashWeekOffset >= 0;
 }
+
 
 function renderMonthGrid(){
   const c=$('monthGrid'); if(!c)return;
@@ -262,6 +280,13 @@ function getWeekDays(off=0){
   mon.setDate(now.getDate()-((dow+6)%7)+off*7);
   return Array.from({length:7},(_,i)=>{ const d=new Date(mon); d.setDate(mon.getDate()+i); return dateStr(d); });
 }
+
+// Week nav buttons on dashboard weekly card
+document.addEventListener('click', e=>{
+  if(e.target.id==='weekNavPrev'){ dashWeekOffset--; renderWeekBars(); }
+  if(e.target.id==='weekNavNext' && dashWeekOffset<0){ dashWeekOffset++; renderWeekBars(); }
+});
+
 
 // ── TIMER ──
 const POMO=State.pomo;
@@ -1583,12 +1608,13 @@ function drawLineGraph(days,s){
   const canvas=$('focusLineChart'); if(!canvas)return;
   const container=canvas.parentElement;
   const dpr=window.devicePixelRatio||1;
-  const cssW=container.clientWidth||600;
-  const cssH=160;
-  canvas.style.width=cssW+'px';
-  canvas.style.height=cssH+'px';
+  // Use the container's rendered size; fall back to 600 if layout hasn't settled
+  const cssW=container.getBoundingClientRect().width||container.clientWidth||600;
+  const cssH=container.getBoundingClientRect().height||160;
+  // Set the pixel buffer to match physical pixels
   canvas.width=Math.round(cssW*dpr);
   canvas.height=Math.round(cssH*dpr);
+  // DO NOT set canvas.style.width/height — CSS handles it via width:100%/height:100%
   const ctx=canvas.getContext('2d');
   ctx.scale(dpr,dpr);
   ctx.clearRect(0,0,cssW,cssH);
@@ -1633,9 +1659,17 @@ function drawLineGraph(days,s){
   areaGrad.addColorStop(1,'rgba(232,168,64,0)');
   ctx.fillStyle=areaGrad; ctx.fill();
 
+  // For week view, find the last index that has actual data so we don't
+  // draw red segments from "today" into empty future days.
+  const todayKeyLG = todayStr();
+  const lastDataIdx = days.reduce((last,d,i)=>(vals[i]>0||d.key<=todayKeyLG?i:last), 0);
+
   // Draw colored segments
   for(let i=1;i<n;i++){
+    // Skip segments that go into future zero-data days
+    if(i > lastDataIdx) break;
     const x0=xOf(i-1),y0=yOf(vals[i-1]),x1=xOf(i),y1=yOf(vals[i]);
+    // Compare today's value vs yesterday's to determine direction
     const diff=vals[i]-vals[i-1];
     // Bright, vivid colors — any improvement is green, any drop is red
     const color=diff>0?'#00e676':diff<0?'#ff3d3d':'#7a7d8e';
@@ -1651,7 +1685,10 @@ function drawLineGraph(days,s){
   // Dots
   const bgColor=isDark?'#181b24':'#ffffff';
   vals.forEach((v,i)=>{
+    // Skip dots for future zero-data days (past the last data point in week view)
+    if(i > lastDataIdx && v === 0) return;
     const x=xOf(i),y=yOf(v);
+    // Color dot based on change vs previous day
     const prev=i>0?vals[i-1]:v,diff=v-prev;
     const color=diff>0?'#00e676':diff<0?'#ff3d3d':'#8b8fa8';
     // Outer ring
