@@ -2693,12 +2693,16 @@ const SupaSync = {
       if(s.rank)          State.rank          = s.rank;
       // Persist locally too
       State.save();
-      // Re-render everything
-      try{ renderDashboard(); }catch(e){}
-      try{ renderTasks(); }catch(e){}
-      try{ renderNotes(); }catch(e){}
+      // Re-render everything with correct function names
+      try{ applyTheme(State.theme, State.lightMode); }catch(e){}
+      try{ applyRankSystemToggle(); }catch(e){}
+      try{ updateDashboard(); }catch(e){}
+      try{ renderTaskList(); }catch(e){}
+      try{ renderNotesList(); }catch(e){}
       try{ renderPlanner(); }catch(e){}
-      try{ renderStats(); }catch(e){}
+      if(document.getElementById('stats').classList.contains('active')){
+        try{ updateStats(); }catch(e){}
+      }
       toast('Data synced from cloud ☁️', 'success');
     }catch(e){ console.warn('[SupaSync] pull error', e); }
   },
@@ -2723,7 +2727,6 @@ const SupaSync = {
   const SUPABASE_URL  = 'https://wrelecqwsovhevioмktf.supabase.co'.replace('\u043c','m');
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndyZWxlY3F3c292aGV2aW9ta3RmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzI3NjUsImV4cCI6MjA5NDQwODc2NX0.Vj2OcbMUvXcpNO7JkJikotJIjI5D41AYV-oFuJc8H6A';
 
-  // Wait for the Supabase CDN lib to load
   function waitForLib(cb){
     if(window.supabase && window.supabase.createClient){ cb(); return; }
     let tries=0;
@@ -2735,33 +2738,50 @@ const SupaSync = {
   }
 
   waitForLib(function(){
-    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+    // ── IMPORTANT: implicit flow only — GitHub Pages is a static host with no
+    //    server-side code. PKCE sends a ?code= that needs a backend to exchange;
+    //    on a static host that code is never exchanged and the session is never
+    //    created. Implicit flow puts the tokens directly in the #hash fragment,
+    //    which Supabase reads client-side. Works on desktop AND mobile Safari. ──
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+      auth: {
+        flowType: 'implicit',
+        detectSessionInUrl: true,  // reads #access_token from URL on redirect
+        persistSession: true,
+        storage: window.localStorage,
+      }
+    });
     SupaSync.init(sb);
 
+    // Redirect back to the same page, stripping any existing hash/query so the
+    // URL stays clean. Supabase appends the #access_token fragment after this.
+    function getRedirectURL(){
+      return window.location.origin + window.location.pathname;
+    }
+
     // ── UI helpers ──
-    function showSignedIn(user, doPull=false){
+    function showSignedIn(user, doPull){
       const out=$('authSignedOut'), inn=$('authSignedIn');
       if(out) out.style.display='none';
       if(inn) inn.style.display='';
-      const meta=user.user_metadata||{};
-      const name=meta.full_name||meta.name||user.email||'User';
-      const email=user.email||'';
-      const avatar=meta.avatar_url||meta.picture||'';
-      const el=$('authUserName'); if(el) el.textContent=name;
-      const ee=$('authUserEmail'); if(ee) ee.textContent=email;
+      const meta = user.user_metadata || {};
+      const name  = meta.full_name || meta.name || user.email || 'User';
+      const email = user.email || '';
+      const avatar= meta.avatar_url || meta.picture || '';
+      const el=$('authUserName');   if(el) el.textContent = name;
+      const ee=$('authUserEmail');  if(ee) ee.textContent = email;
       const av=$('authAvatar');
       if(av){
         if(avatar){
-          av.style.backgroundImage=`url(${avatar})`;
-          av.style.backgroundSize='cover';
-          av.style.backgroundPosition='center';
-          av.textContent='';
+          av.style.backgroundImage   = `url(${avatar})`;
+          av.style.backgroundSize    = 'cover';
+          av.style.backgroundPosition= 'center';
+          av.textContent = '';
         } else {
-          av.style.backgroundImage='none';
-          av.textContent=name.charAt(0).toUpperCase();
+          av.style.backgroundImage = 'none';
+          av.textContent = name.charAt(0).toUpperCase();
         }
       }
-      // Register user with SupaSync and pull cloud data
       SupaSync.setUser(user.id);
       if(doPull) SupaSync.pull();
     }
@@ -2773,48 +2793,60 @@ const SupaSync = {
       SupaSync.setUser(null);
     }
 
-    // ── Button events ──
+    // ── Sign-in button ──
     const signInBtn=$('googleSignInBtn');
     if(signInBtn){
-      signInBtn.addEventListener('click',async()=>{
-        signInBtn.disabled=true;
-        signInBtn.textContent='Connecting…';
-        const { error }=await sb.auth.signInWithOAuth({
-          provider:'google',
-          options:{ redirectTo: window.location.href }
+      signInBtn.addEventListener('click', async ()=>{
+        signInBtn.disabled = true;
+        signInBtn.textContent = 'Connecting…';
+        const { error } = await sb.auth.signInWithOAuth({
+          provider: 'google',
+          options: { redirectTo: getRedirectURL() }
         });
         if(error){
-          toast('Sign-in failed: '+error.message,'warn');
-          signInBtn.disabled=false;
-          signInBtn.innerHTML=`<svg class="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg> Continue with Google`;
+          toast('Sign-in failed: '+error.message, 'warn');
+          signInBtn.disabled = false;
+          signInBtn.innerHTML = `<svg class="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg> Continue with Google`;
         }
+        // On success the browser navigates away — no further action needed here
       });
     }
 
+    // ── Sign-out button ──
     const signOutBtn=$('googleSignOutBtn');
     if(signOutBtn){
-      signOutBtn.addEventListener('click',async()=>{
+      signOutBtn.addEventListener('click', async ()=>{
         await sb.auth.signOut();
         showSignedOut();
-        toast('Signed out','normal');
+        toast('Signed out', 'normal');
       });
     }
 
-    // ── Session listener — pull on every fresh sign-in ──
+    // ── Auth state listener ──
+    // onAuthStateChange is the single source of truth. It fires:
+    //   • INITIAL_SESSION  — on every page load (session from localStorage or URL hash)
+    //   • SIGNED_IN        — after the OAuth redirect lands back here with #access_token
+    //   • TOKEN_REFRESHED  — when the access token is silently refreshed
+    //   • SIGNED_OUT       — after signOut()
+    //
+    // detectSessionInUrl:true means Supabase reads and exchanges the #access_token
+    // from the URL *before* firing SIGNED_IN, so by the time we get here the
+    // session is already persisted in localStorage — works on mobile Safari too.
+    let _pullDone = false; // guard: only pull cloud data once per page load
     sb.auth.onAuthStateChange((event, session)=>{
-      if(session&&session.user){
-        const doPull = (event==='SIGNED_IN' || event==='TOKEN_REFRESHED');
-        showSignedIn(session.user, doPull);
+      if(session && session.user){
+        // Pull data on first sign-in OR on the initial page load after a redirect
+        const isFirstLoad = (event === 'SIGNED_IN' || event === 'INITIAL_SESSION');
+        const shouldPull  = isFirstLoad && !_pullDone;
+        if(shouldPull) _pullDone = true;
+        showSignedIn(session.user, shouldPull);
+        // Clean the URL *after* Supabase has already read the hash/code
+        if(window.location.hash.includes('access_token') || window.location.search.includes('code=')){
+          history.replaceState(null, '', window.location.pathname);
+        }
+      } else {
+        showSignedOut();
       }
-      else{ showSignedOut(); }
-    });
-
-    // ── Check existing session on load ──
-    sb.auth.getSession().then(({ data })=>{
-      if(data&&data.session&&data.session.user){
-        showSignedIn(data.session.user, true); // always pull on page load
-      }
-      else{ showSignedOut(); }
     });
   });
 })();
