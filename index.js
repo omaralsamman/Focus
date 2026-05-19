@@ -427,6 +427,7 @@ function syncDisplayValue(key){
 
 // ── TASKS ──
 let taskFilter='all';
+let taskSortMode='none'; // 'none' | 'priority' | 'status'
 
 
 function addTask(){
@@ -454,6 +455,35 @@ function renderTaskList(){
   if(taskFilter==='done') items=items.filter(t=>t.done||(t.status==='done'));
   else if(taskFilter==='pending') items=items.filter(t=>!t.done&&t.status!=='done');
   else if(!['all','done','pending'].includes(taskFilter)) items=items.filter(t=>t.category===taskFilter);
+
+  const isDone = t => t.done || t.status === 'done';
+
+  if(taskSortMode==='priority'){
+    const priorityOrder={critical:0,high:1,medium:2,low:3,someday:4};
+    items.sort((a,b)=>{
+      const aDone=isDone(a)?1:0, bDone=isDone(b)?1:0;
+      if(aDone!==bDone) return aDone-bDone;
+      return (priorityOrder[a.priority]??2)-(priorityOrder[b.priority]??2);
+    });
+  } else if(taskSortMode==='status'){
+    // working → not-started → stuck → done
+    const statusOrder={working:0,'not-started':1,stuck:2,done:3};
+    items.sort((a,b)=>{
+      const sa=a.status||(a.done?'done':'not-started');
+      const sb=b.status||(b.done?'done':'not-started');
+      return (statusOrder[sa]??1)-(statusOrder[sb]??1);
+    });
+  } else if(taskSortMode==='date'){
+    // tasks with due dates first (earliest first), no-date tasks at bottom, done always last
+    items.sort((a,b)=>{
+      const aDone=isDone(a)?1:0, bDone=isDone(b)?1:0;
+      if(aDone!==bDone) return aDone-bDone;
+      if(!a.due && !b.due) return 0;
+      if(!a.due) return 1;
+      if(!b.due) return -1;
+      return a.due < b.due ? -1 : a.due > b.due ? 1 : 0;
+    });
+  }
 
   if(!items.length){
     list.innerHTML=`<li class="task-empty-state"><span>✦</span><p>${taskFilter==='done'?'No completed tasks.':'No tasks here.'}</p></li>`;
@@ -554,40 +584,74 @@ function renderTaskList(){
 }
 
 function expandTaskName(btn){
-  const nameEl=btn.previousElementSibling;
-  if(!nameEl)return;
-  nameEl.style.whiteSpace='normal';
-  nameEl.style.overflow='visible';
-  nameEl.style.textOverflow='clip';
-  nameEl.dataset.expanded='1';
-  btn.style.display='none';
+  // On desktop: expand inline as before
+  if(window.innerWidth > 768){
+    const nameEl=btn.previousElementSibling;
+    if(!nameEl)return;
+    nameEl.style.webkitLineClamp='unset';
+    nameEl.style.display='block';
+    nameEl.style.overflow='visible';
+    nameEl.dataset.expanded='1';
+    btn.style.display='none';
+    return;
+  }
+  // On mobile: show popup
+  const nameEl=btn.closest('.task-name-cell')&&btn.closest('.task-name-cell').querySelector('.task-name');
+  const fullText=(nameEl&&nameEl.dataset.full)||nameEl&&nameEl.textContent||'';
+  showTaskNamePopup(fullText);
+}
+
+function showTaskNamePopup(text){
+  const existing=document.getElementById('taskNamePopup');
+  if(existing) existing.remove();
+  const overlay=document.createElement('div');
+  overlay.id='taskNamePopup';
+  overlay.className='task-name-popup-overlay';
+  overlay.innerHTML=`
+    <div class="task-name-popup-box">
+      <div class="task-name-popup-header">
+        <span>Task Name</span>
+        <button class="task-name-popup-close" id="taskNamePopupClose">✕</button>
+      </div>
+      <div class="task-name-popup-body">${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+    </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('taskNamePopupClose').addEventListener('click',()=>overlay.remove());
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove(); });
 }
 
 function checkTaskNameTruncation(){
+  // On desktop: hide all read-more buttons (desktop uses single-line ellipsis natively)
+  if(window.innerWidth > 768){
+    document.querySelectorAll('.task-readmore-btn').forEach(btn=>btn.style.display='none');
+    return;
+  }
   document.querySelectorAll('.task-name').forEach(el=>{
     const btn=el.nextElementSibling;
     if(!btn||!btn.classList.contains('task-readmore-btn'))return;
-    // Skip elements the user has already expanded
-    if(el.dataset.expanded==='1')return;
-    // Reset to measure natural width
-    el.style.whiteSpace='nowrap';
+
+    // Temporarily lift the line-clamp to measure the natural full height
+    el.style.webkitLineClamp='unset';
+    el.style.display='block';
+    el.style.overflow='visible';
+
+    const lineHeight=parseFloat(getComputedStyle(el).lineHeight)||16;
+    const naturalH=el.scrollHeight;
+
+    // Restore 2-line clamp
+    el.style.webkitLineClamp='2';
+    el.style.display='-webkit-box';
     el.style.overflow='hidden';
-    el.style.textOverflow='ellipsis';
-    // Only show read more if the text is actually clipped
-    const isTruncated = el.scrollWidth > el.clientWidth + 1;
-    btn.style.display = isTruncated ? 'inline-block' : 'none';
+
+    // Show "read more" only if full text needs 3 or more lines
+    btn.style.display = (naturalH >= lineHeight * 3) ? 'inline-block' : 'none';
   });
 }
 
 function renderAddColumnBtn(){
+  // Add Column button removed
   let existing = $('addColumnBtnWrap');
   if(existing) existing.remove();
-  const wrap = document.createElement('div');
-  wrap.id = 'addColumnBtnWrap';
-  wrap.className = 'add-column-wrap';
-  wrap.innerHTML = `<button class="add-column-btn" onclick="promptAddColumn()">+ Add Column</button>`;
-  const container = $('taskList').closest('.task-list-container');
-  if(container) container.appendChild(wrap);
 }
 
 function promptAddColumn(){
@@ -796,6 +860,9 @@ function deleteTask(id){
 $('addTaskBtn').addEventListener('click',addTask);
 $('taskInput').addEventListener('keydown',e=>{if(e.key==='Enter')addTask();});
 $$('.filter-btn').forEach(btn=>btn.addEventListener('click',()=>{$$('.filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');taskFilter=btn.dataset.filter;renderTaskList();}));
+$$('.task-sort-btn').forEach(btn=>btn.addEventListener('click',()=>{$$('.task-sort-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');taskSortMode=btn.dataset.sort;renderTaskList();}));
+const _sortToggleBtn=document.getElementById('taskSortToggle');
+if(_sortToggleBtn){_sortToggleBtn.addEventListener('click',()=>{taskSortMode=!taskSortMode;_sortToggleBtn.classList.toggle('active',taskSortMode);_sortToggleBtn.textContent=taskSortMode?'⇅ Sorted by Priority':'⇅ Sort by Priority';renderTaskList();});}
 
 // ── PLANNER ──
 function timeToMins(t){const[h,m]=t.split(':').map(Number);return h*60+m;}
@@ -1510,8 +1577,7 @@ const achievements=[
 
 function updateStats(){
   const s=State.stats, tasks=State.tasks;
-  const totalMins=Object.values(s.focusMinutesByDay).reduce((a,b)=>a+b,0);
-  $('totalFocusHours').textContent=(totalMins/60).toFixed(1)+'h';
+  $('totalFocusHours').textContent=(Object.values(s.focusMinutesByDay).reduce((a,b)=>a+b,0)/60).toFixed(1)+'h';
   $('totalPomodoros').textContent=s.totalPomodoros;
   $('totalTasksDone').textContent=Math.max(tasks.filter(t=>t.done).length, State.stats.doneOnTimeTasks.length);
   $('bestStreak').textContent=s.bestStreak;
@@ -1539,7 +1605,11 @@ function updateStats(){
     </div>`;
   }).join('');
 
-  drawLineGraph(days,s);
+  // ── Line chart with animated canvas draw ──
+  drawLineGraph(days, s);
+
+  // ── Pie chart with animated fill ──
+  drawPieChart(tasks);
 
   // Breakdown
   const cats=['work','study','personal','health','creative','finance','reading','project'];
@@ -1553,31 +1623,24 @@ function updateStats(){
     </div>`).join('')||'<p style="color:var(--text-muted);font-size:13px;font-style:italic">Add tasks to see breakdown</p>';
 
   // Efficiency — unbounded score based on quality of work
-  // Points per completed task (by priority)
   const priorityPts={critical:20,high:12,medium:7,low:4,someday:2};
   const taskPts=tasks.filter(t=>t.done).reduce((sum,t)=>{
     const base=priorityPts[t.priority]||5;
-    // Bonus if done on time
     const onTime=State.stats.doneOnTimeTasks.some(r=>r.id===t.id);
     return sum+base+(onTime?Math.round(base*0.5):0);
   },0);
-  // Points per focus session (by duration in minutes)
-  // totalPomodoros × current focus duration as a proxy for session length
   const avgFocusMins = s.totalPomodoros > 0
     ? Object.values(s.focusMinutesByDay||{}).reduce((a,b)=>a+b,0) / Math.max(1, s.totalPomodoros)
     : (State.pomo.durations.pomoDuration||25);
   const sessionPts = Math.round(s.totalPomodoros * Math.max(5, avgFocusMins * 0.6));
-  // Points per checked/done planner block (by type weight)
   const blockTypePts={focus:10,study:8,creative:7,meeting:5,exercise:6,admin:3,break:1};
   const blockPts=Object.values(State.planner.blocks||{}).flat().filter(b=>b.done).reduce((sum,b)=>{
     const base=blockTypePts[b.type]||4;
     const durMins=b.end&&b.start?(()=>{let s=timeToMins(b.start),e=timeToMins(b.end);if(e<=s)e+=24*60;return Math.max(15,e-s);})():30;
     return sum+Math.round(base*(durMins/30));
   },0);
-  // Streak bonus
   const streakPts=Math.round(s.currentStreak*3);
   const score=taskPts+sessionPts+blockPts+streakPts;
-  // Ring fills to 100% at 500pts then overflows gracefully
   const ringMax=500;
   const circ=2*Math.PI*80;
   const fillPct=Math.min(1,score/ringMax);
@@ -1599,166 +1662,327 @@ function updateStats(){
     </div>`;
   }).join('');
 
-  drawPieChart(tasks);
   updateRankCard();
+
+  // ── Mobile scroll-reveal: observe off-screen stats cards ──
+  if(window.innerWidth <= 768){
+    setupStatsScrollReveal();
+  }
 }
 
-// ── LINE GRAPH (crisp, device-pixel-ratio aware) ──
-function drawLineGraph(days,s){
-  const canvas=$('focusLineChart'); if(!canvas)return;
-  const container=canvas.parentElement;
-  const dpr=window.devicePixelRatio||1;
-  // Use the container's rendered size; fall back to 600 if layout hasn't settled
-  const cssW=container.getBoundingClientRect().width||container.clientWidth||600;
-  const cssH=container.getBoundingClientRect().height||160;
-  // Set the pixel buffer to match physical pixels
-  canvas.width=Math.round(cssW*dpr);
-  canvas.height=Math.round(cssH*dpr);
-  // DO NOT set canvas.style.width/height — CSS handles it via width:100%/height:100%
-  const ctx=canvas.getContext('2d');
-  ctx.scale(dpr,dpr);
-  ctx.clearRect(0,0,cssW,cssH);
+// ── MOBILE: Scroll-reveal for off-screen stats cards ──
+let _statsRevealObserver = null;
+function setupStatsScrollReveal(){
+  // Disconnect previous observer to avoid duplication
+  if(_statsRevealObserver){ _statsRevealObserver.disconnect(); _statsRevealObserver=null; }
 
-  const vals=days.map(d=>s.focusMinutesByDay[d.key]||0);
-  const maxV=Math.max(1,...vals);
-  const pad={l:36,r:12,t:14,b:26};
-  const gw=cssW-pad.l-pad.r, gh=cssH-pad.t-pad.b;
-  const n=vals.length;
+  const statsSection=$('stats');
+  if(!statsSection) return;
 
-  // Grid lines + Y labels
-  const isDark=!document.body.classList.contains('light-mode');
-  const gridColor=isDark?'rgba(255,255,255,0.06)':'rgba(0,0,0,0.06)';
-  const labelColor=isDark?'rgba(255,255,255,0.3)':'rgba(0,0,0,0.35)';
-  ctx.strokeStyle=gridColor; ctx.lineWidth=1;
-  [0,0.25,0.5,0.75,1].forEach(f=>{
-    const y=pad.t+gh*(1-f);
-    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(cssW-pad.r,y);ctx.stroke();
-    if(f>0){
-      ctx.fillStyle=labelColor; ctx.font=`10px JetBrains Mono`;
-      ctx.textAlign='right'; ctx.fillText(Math.round(maxV*f)+'m',pad.l-4,y+4);
-    }
+  const cards = Array.from(statsSection.querySelectorAll('.card'));
+
+  // Reset reveal state so re-entering stats page re-triggers animations
+  cards.forEach(c=>{
+    c.classList.remove('stats-scroll-reveal','revealed');
   });
 
-  if(n<2){
-    ctx.fillStyle=labelColor; ctx.font='13px Cormorant Garamond'; ctx.textAlign='center';
-    ctx.fillText('No data yet — complete some sessions',cssW/2,cssH/2); return;
-  }
+  // Give browser a frame to settle layout, then check which cards are in viewport
+  requestAnimationFrame(()=>{
+    const viewH = window.innerHeight;
 
-  const xOf=i=>pad.l+(n===1?gw/2:i/(n-1)*gw);
-  const yOf=v=>pad.t+gh*(1-v/maxV);
+    cards.forEach(c=>{
+      const rect = c.getBoundingClientRect();
+      const inView = rect.top < viewH - 20 && rect.bottom > 0;
+      if(inView){
+        // Card is already visible — reveal immediately, no animation lock
+        c.classList.add('revealed');
+      } else {
+        // Card is below (or above) fold — hide and wait for scroll
+        c.classList.add('stats-scroll-reveal');
+      }
+    });
 
-  // Area fill under curve (subtle)
-  ctx.beginPath();
-  ctx.moveTo(xOf(0),yOf(vals[0]));
-  for(let i=1;i<n;i++) ctx.lineTo(xOf(i),yOf(vals[i]));
-  ctx.lineTo(xOf(n-1),pad.t+gh);
-  ctx.lineTo(xOf(0),pad.t+gh);
-  ctx.closePath();
-  const areaGrad=ctx.createLinearGradient(0,pad.t,0,pad.t+gh);
-  areaGrad.addColorStop(0,'rgba(232,168,64,0.12)');
-  areaGrad.addColorStop(1,'rgba(232,168,64,0)');
-  ctx.fillStyle=areaGrad; ctx.fill();
+    const toReveal = cards.filter(c=>c.classList.contains('stats-scroll-reveal'));
+    if(!toReveal.length) return;
 
-  // For week view, find the last index that has actual data so we don't
-  // draw red segments from "today" into empty future days.
-  const todayKeyLG = todayStr();
-  const lastDataIdx = days.reduce((last,d,i)=>(vals[i]>0||d.key<=todayKeyLG?i:last), 0);
+    _statsRevealObserver = new IntersectionObserver((entries)=>{
+      entries.forEach(entry=>{
+        if(entry.isIntersecting){
+          const el = entry.target;
+          const idx = toReveal.indexOf(el);
+          setTimeout(()=>{
+            el.classList.remove('stats-scroll-reveal');
+            el.classList.add('revealed');
+            // If this is the line-graph card, trigger chart draw after reveal
+            if(el.classList.contains('line-graph-card')){
+              const isMonth=State.statsRange==='month';
+              const todayKey2=todayStr();
+              let days2;
+              if(isMonth){
+                const now=new Date(),y=now.getFullYear(),mo=now.getMonth(),dim=new Date(y,mo+1,0).getDate();
+                days2=Array.from({length:dim},(_,i)=>{const d=new Date(y,mo,i+1);return{key:dateStr(d),label:String(i+1)};}).filter(d=>d.key<=todayKey2);
+              } else {
+                days2=getWeekDays(0).map((k,i)=>({key:k,label:['M','T','W','T','F','S','S'][i]}));
+              }
+              drawLineGraph(days2, State.stats);
+            }
+            if(el.classList.contains('pie-chart-card')){
+              drawPieChart(State.tasks);
+            }
+          }, Math.max(0, idx) * 80); // stagger based on order among hidden cards
+          _statsRevealObserver.unobserve(el);
+        }
+      });
+    },{ threshold:0.08, rootMargin:'0px 0px -30px 0px' });
 
-  // Draw colored segments
-  for(let i=1;i<n;i++){
-    // Skip segments that go into future zero-data days
-    if(i > lastDataIdx) break;
-    const x0=xOf(i-1),y0=yOf(vals[i-1]),x1=xOf(i),y1=yOf(vals[i]);
-    // Compare today's value vs yesterday's to determine direction
-    const diff=vals[i]-vals[i-1];
-    // Bright, vivid colors — any improvement is green, any drop is red
-    const color=diff>0?'#00e676':diff<0?'#ff3d3d':'#7a7d8e';
-    // Glow layer
-    ctx.save(); ctx.strokeStyle=color+'55'; ctx.lineWidth=7; ctx.lineCap='round';
-    ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.stroke();
-    // Crisp line
-    ctx.strokeStyle=color; ctx.lineWidth=2.5;
-    ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.stroke();
-    ctx.restore();
-  }
-
-  // Dots
-  const bgColor=isDark?'#181b24':'#ffffff';
-  vals.forEach((v,i)=>{
-    // Skip dots for future zero-data days (past the last data point in week view)
-    if(i > lastDataIdx && v === 0) return;
-    const x=xOf(i),y=yOf(v);
-    // Color dot based on change vs previous day
-    const prev=i>0?vals[i-1]:v,diff=v-prev;
-    const color=diff>0?'#00e676':diff<0?'#ff3d3d':'#8b8fa8';
-    // Outer ring
-    ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.fillStyle=bgColor;ctx.fill();
-    // Dot
-    ctx.beginPath();ctx.arc(x,y,3.5,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
-    // Glow
-    ctx.beginPath();ctx.arc(x,y,3.5,0,Math.PI*2);
-    ctx.strokeStyle=color+'88';ctx.lineWidth=3;ctx.stroke();
-  });
-
-  // X labels
-  ctx.fillStyle=labelColor; ctx.font='10px JetBrains Mono'; ctx.textAlign='center';
-  days.forEach((d,i)=>{
-    if(n<=14||i%(Math.ceil(n/8))===0){
-      ctx.fillText(d.label,xOf(i),cssH-4);
-    }
+    toReveal.forEach(c=>_statsRevealObserver.observe(c));
   });
 }
 
-// ── PIE CHART ──
-function drawPieChart(tasks){
-  const svg=$('taskPieChart'); if(!svg)return;
-  const today=todayStr();
-  // Run audit first to catch any newly overdue tasks
+// ── LINE GRAPH — animated draw (device-pixel-ratio aware) ──
+function drawLineGraph(days, s) {
+  const canvas = $('focusLineChart'); if (!canvas) return;
+  const container = canvas.parentElement;
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = container.getBoundingClientRect().width || container.clientWidth || 600;
+  const cssH = container.getBoundingClientRect().height || 160;
+  canvas.width  = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const vals = days.map(d => s.focusMinutesByDay[d.key] || 0);
+  const maxV = Math.max(1, ...vals);
+  const pad  = { l:36, r:12, t:14, b:26 };
+  const gw   = cssW - pad.l - pad.r;
+  const gh   = cssH - pad.t - pad.b;
+  const n    = vals.length;
+
+  const isDark      = !document.body.classList.contains('light-mode');
+  const gridColor   = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const labelColor  = isDark ? 'rgba(255,255,255,0.3)'  : 'rgba(0,0,0,0.35)';
+
+  // Grid lines + Y labels (drawn immediately — static chrome)
+  function drawGrid() {
+    ctx.strokeStyle = gridColor; ctx.lineWidth = 1;
+    [0, 0.25, 0.5, 0.75, 1].forEach(f => {
+      const y = pad.t + gh * (1 - f);
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(cssW - pad.r, y); ctx.stroke();
+      if (f > 0) {
+        ctx.fillStyle = labelColor; ctx.font = '10px JetBrains Mono';
+        ctx.textAlign = 'right';
+        ctx.fillText(Math.round(maxV * f) + 'm', pad.l - 4, y + 4);
+      }
+    });
+    // X labels
+    ctx.fillStyle = labelColor; ctx.font = '10px JetBrains Mono'; ctx.textAlign = 'center';
+    days.forEach((d, i) => {
+      if (n <= 14 || i % (Math.ceil(n / 8)) === 0)
+        ctx.fillText(d.label, xOf(i), cssH - 4);
+    });
+  }
+
+  if (n < 2) {
+    ctx.fillStyle = labelColor; ctx.font = '13px Cormorant Garamond'; ctx.textAlign = 'center';
+    ctx.fillText('No data yet — complete some sessions', cssW / 2, cssH / 2); return;
+  }
+
+  const xOf = i => pad.l + (n === 1 ? gw / 2 : i / (n - 1) * gw);
+  const yOf = v => pad.t + gh * (1 - v / maxV);
+
+  const todayKeyLG  = todayStr();
+  const lastDataIdx = days.reduce((last, d, i) => (vals[i] > 0 || d.key <= todayKeyLG ? i : last), 0);
+
+  drawGrid();
+
+  // ── Animated draw ──
+  const DURATION = 900; // ms
+  const startTime = performance.now();
+
+  function frame(now) {
+    const t = Math.min(1, (now - startTime) / DURATION);
+    // ease-out cubic
+    const ease = 1 - Math.pow(1 - t, 3);
+
+    ctx.clearRect(0, 0, cssW, cssH);
+    drawGrid();
+
+    // Area fill — reveal left-to-right using clip
+    const revealX = pad.l + gw * ease;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(pad.l, 0, revealX - pad.l, cssH);
+    ctx.clip();
+
+    ctx.beginPath();
+    ctx.moveTo(xOf(0), yOf(vals[0]));
+    for (let i = 1; i < n; i++) ctx.lineTo(xOf(i), yOf(vals[i]));
+    ctx.lineTo(xOf(n - 1), pad.t + gh);
+    ctx.lineTo(xOf(0), pad.t + gh);
+    ctx.closePath();
+    const areaGrad = ctx.createLinearGradient(0, pad.t, 0, pad.t + gh);
+    areaGrad.addColorStop(0, 'rgba(232,168,64,0.12)');
+    areaGrad.addColorStop(1, 'rgba(232,168,64,0)');
+    ctx.fillStyle = areaGrad; ctx.fill();
+
+    // Colored segments
+    for (let i = 1; i < n; i++) {
+      if (i > lastDataIdx) break;
+      const x0 = xOf(i-1), y0 = yOf(vals[i-1]), x1 = xOf(i), y1 = yOf(vals[i]);
+      // partially draw the last segment within clip
+      const diff  = vals[i] - vals[i-1];
+      const color = diff > 0 ? '#00e676' : diff < 0 ? '#ff3d3d' : '#7a7d8e';
+      ctx.save(); ctx.strokeStyle = color + '55'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.restore(); // remove clip
+
+    // Dots — only up to the revealed point
+    const bgColor = isDark ? '#181b24' : '#ffffff';
+    vals.forEach((v, i) => {
+      if (i > lastDataIdx && v === 0) return;
+      if (xOf(i) > revealX + 6) return; // hide future dots
+      const x = xOf(i), y = yOf(v);
+      const prev  = i > 0 ? vals[i-1] : v, diff = v - prev;
+      const color = diff > 0 ? '#00e676' : diff < 0 ? '#ff3d3d' : '#8b8fa8';
+      // Scale dot in as the line reaches it
+      const dotT  = Math.max(0, Math.min(1, (revealX - x) / 20));
+      const dotR  = 3.5 * dotT;
+      if (dotR < 0.5) return;
+      ctx.beginPath(); ctx.arc(x, y, dotR + 1.5, 0, Math.PI * 2); ctx.fillStyle = bgColor; ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, dotR, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, dotR, 0, Math.PI * 2);
+      ctx.strokeStyle = color + '88'; ctx.lineWidth = 3; ctx.stroke();
+    });
+
+    if (t < 1) requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+}
+
+// ── PIE CHART — animated slice sweep ──
+function drawPieChart(tasks) {
+  const svg = $('taskPieChart'); if (!svg) return;
+  const today = todayStr();
   auditMissedTasks();
-  // Use persistent counts from state, supplemented by current live data
-  const persistentDone=State.stats.doneOnTimeTasks.length;
-  const persistentMissed=State.stats.missedTasks.length;
-  // Also count currently-done tasks not yet in persistent list
-  const liveDone=tasks.filter(t=>(t.done||t.status==='done')&&!State.stats.doneOnTimeTasks.some(r=>r.id===t.id)).length;
-  // Pending = not done and not overdue
-  const pending=tasks.filter(t=>!t.done&&t.status!=='done'&&(!t.due||t.due>=today)).length;
-  const onTime=persistentDone+liveDone;
-  const missed=persistentMissed;
-  const total=onTime+missed+pending;
-  const pieStats=$('pieChartStats');
-  if(total===0){
-    svg.innerHTML=`<circle cx="80" cy="80" r="60" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="24"/>
+  const persistentDone   = State.stats.doneOnTimeTasks.length;
+  const persistentMissed = State.stats.missedTasks.length;
+  const liveDone  = tasks.filter(t => (t.done || t.status === 'done') && !State.stats.doneOnTimeTasks.some(r => r.id === t.id)).length;
+  const pending   = tasks.filter(t => !t.done && t.status !== 'done' && (!t.due || t.due >= today)).length;
+  const onTime    = persistentDone + liveDone;
+  const missed    = persistentMissed;
+  const total     = onTime + missed + pending;
+  const pieStats  = $('pieChartStats');
+
+  if (total === 0) {
+    svg.innerHTML = `<circle cx="80" cy="80" r="48" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="22"/>
       <text x="80" y="86" text-anchor="middle" font-family="var(--font-mono)" font-size="11" fill="var(--text-muted)">No tasks</text>`;
-    if(pieStats) pieStats.textContent='';
+    if (pieStats) pieStats.textContent = '';
     return;
   }
-  const cx=80,cy=80,r=60,gap=1.5;
-  const slices=[
-    {val:onTime,color:'#4dd87a',label:'On Time'},
-    {val:missed,color:'#ff5a53',label:'Missed'},
-    {val:pending,color:'var(--text-muted)',label:'Pending'},
-  ].filter(s=>s.val>0);
 
-  let startAngle=-Math.PI/2;
-  const totalSlice=slices.reduce((a,s)=>a+s.val,0);
-  let paths='';
-  slices.forEach(slice=>{
-    const angle=(slice.val/totalSlice)*Math.PI*2;
-    const endAngle=startAngle+angle-gap*Math.PI/180;
-    const x1=cx+r*Math.cos(startAngle), y1=cy+r*Math.sin(startAngle);
-    const x2=cx+r*Math.cos(endAngle), y2=cy+r*Math.sin(endAngle);
-    const large=angle>Math.PI?1:0;
-    paths+=`<path d="M${cx},${cy} L${x1},${y1} A${r},${r},0,${large},1,${x2},${y2} Z" fill="${slice.color}" opacity="0.85"/>`;
-    startAngle+=angle;
+  // Build slices
+  const allSlices = [
+    { val: onTime,  color: '#4dd87a', label: 'On Time' },
+    { val: missed,  color: '#ff5a53', label: 'Missed'  },
+    { val: pending, color: 'var(--text-muted)', label: 'Pending' },
+  ].filter(s => s.val > 0);
+
+  const cx = 80, cy = 80, r = 48, strokeW = 22;
+  const circumference = 2 * Math.PI * r; // ≈ 301.6
+  const totalVal = allSlices.reduce((a, s) => a + s.val, 0);
+  const GAP_DEG  = 3; // degrees of gap between slices
+  const GAP_FRAC = GAP_DEG / 360;
+
+  // Pre-compute each slice's offset/length in stroke-dash units
+  const sliceMeta = [];
+  let cumFrac = 0;
+  allSlices.forEach((slice, idx) => {
+    const frac   = slice.val / totalVal;
+    const dash   = Math.max(0, (frac - GAP_FRAC) * circumference);
+    const offset = circumference * (1 - cumFrac); // SVG: circle starts at 3 o'clock, we rotate -90°
+    sliceMeta.push({ ...slice, frac, dash, offset, fullDash: dash });
+    cumFrac += frac;
   });
-  // Center donut hole
-  paths+=`<circle cx="${cx}" cy="${cy}" r="35" fill="var(--bg-card)"/>`;
+
   // Center text
-  const pct=total>0?Math.round(onTime/total*100):0;
-  paths+=`<text x="${cx}" y="${cy-6}" text-anchor="middle" font-family="var(--font-mono)" font-size="18" font-weight="300" fill="var(--text-primary)">${pct}%</text>
-    <text x="${cx}" y="${cy+10}" text-anchor="middle" font-family="var(--font-mono)" font-size="9" fill="var(--text-muted)" letter-spacing="1">ON TIME</text>`;
-  svg.innerHTML=paths;
-  if(pieStats) pieStats.textContent=`${onTime} done · ${missed} missed · ${pending} pending`;
+  const pct = Math.round(onTime / total * 100);
+
+  // Render skeleton first — a single dimmed ring
+  svg.innerHTML = `
+    <g transform="rotate(-90 ${cx} ${cy})">
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none"
+        stroke="rgba(255,255,255,0.06)" stroke-width="${strokeW}"/>
+    </g>
+    <circle cx="${cx}" cy="${cy}" r="${r - strokeW/2 - 2}" fill="var(--bg-card)"/>
+    <text x="${cx}" y="${cy - 6}" text-anchor="middle" font-family="var(--font-mono)"
+      font-size="18" font-weight="300" fill="var(--text-primary)" opacity="0">${pct}%</text>
+    <text x="${cx}" y="${cy + 10}" text-anchor="middle" font-family="var(--font-mono)"
+      font-size="9" fill="var(--text-muted)" letter-spacing="1" opacity="0">ON TIME</text>`;
+
+  // Animate — one continuous sweep around the ring, slices fill in sequence
+  const TOTAL_DUR = 900; // ms total animation
+  const start = performance.now();
+
+  // Pre-compute cumulative fraction thresholds for each slice
+  // so the sweep hand passes through each slice in order
+  let cumFracAnim = 0;
+  const sliceThresholds = sliceMeta.map(sm => {
+    const start_t = cumFracAnim;
+    cumFracAnim += sm.frac;
+    return { start_t, end_t: cumFracAnim };
+  });
+
+  function animatePie(now) {
+    const rawT  = Math.min(1, (now - start) / TOTAL_DUR);
+    // ease-out cubic applied to the sweep progress
+    const sweepProgress = 1 - Math.pow(1 - rawT, 3);
+
+    let paths = `<g transform="rotate(-90 ${cx} ${cy})">`;
+    // Background ring
+    paths += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none"
+      stroke="rgba(255,255,255,0.06)" stroke-width="${strokeW}"/>`;
+
+    sliceMeta.forEach((sm, idx) => {
+      const thresh = sliceThresholds[idx];
+      // How much of this slice has the sweep hand revealed?
+      // sweepProgress goes 0→1 over the whole circumference
+      const sliceProgress = Math.min(1, Math.max(0,
+        (sweepProgress - thresh.start_t) / (thresh.end_t - thresh.start_t)
+      ));
+      const currentDash = sm.fullDash * sliceProgress;
+      const gap = Math.max(0, circumference - currentDash);
+
+      paths += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none"
+        stroke="${sm.color}" stroke-width="${strokeW}" opacity="0.92"
+        stroke-dasharray="${currentDash} ${gap}"
+        stroke-dashoffset="${sm.offset}"
+        stroke-linecap="butt"/>`;
+    });
+
+    paths += `</g>`;
+    // Donut hole
+    paths += `<circle cx="${cx}" cy="${cy}" r="${r - strokeW/2 - 1}" fill="var(--bg-card)"/>`;
+    // Center text fades in after 70%
+    const textOpacity = Math.max(0, (rawT - 0.7) / 0.3);
+    paths += `<text x="${cx}" y="${cy - 6}" text-anchor="middle" font-family="var(--font-mono)"
+      font-size="18" font-weight="300" fill="var(--text-primary)" opacity="${textOpacity}">${pct}%</text>
+      <text x="${cx}" y="${cy + 10}" text-anchor="middle" font-family="var(--font-mono)"
+      font-size="9" fill="var(--text-muted)" letter-spacing="1" opacity="${textOpacity}">ON TIME</text>`;
+
+    svg.innerHTML = paths;
+
+    if (rawT < 1) requestAnimationFrame(animatePie);
+    else if (pieStats) pieStats.textContent = `${onTime} done · ${missed} missed · ${pending} pending`;
+  }
+
+  requestAnimationFrame(animatePie);
 }
 
 window.addEventListener('resize',()=>{
@@ -2651,6 +2875,303 @@ document.querySelectorAll('.add-task-btn, .mini-btn, .ctrl-btn.primary').forEach
   });
   obs.observe(plannerSection, { childList: true, subtree: true });
 })();
+// ══════════════════════════════════════════════════════
+//  AI GOALS — Goal Analysis, Focus Patterns, Review
+// ══════════════════════════════════════════════════════
+(function initGoals(){
+
+  /* ── Helpers ── */
+  function loadingHTML(msg){
+    return `<div class="ai-loading"><div class="ai-loading-dots"><span></span><span></span><span></span></div><span>${msg}</span></div>`;
+  }
+
+  function renderMarkdown(text){
+    // Minimal markdown-to-HTML: ##/### headings, **bold**, bullet lists
+    return text
+      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/^[-•] (.+)$/gm, '<li>$1</li>')
+      .replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`)
+      .replace(/\n{2,}/g, '</p><p>')
+      .replace(/^(?!<[hup])/gm, '')
+      .replace(/(<p><\/p>)/g, '')
+      .trim();
+  }
+
+  /* ── Gather app data as a context string ── */
+  function buildAppContext(){
+    const now = new Date();
+    const todayKey = todayStr();
+
+    // Tasks summary
+    const tasks = State.tasks || [];
+    const doneTasks = tasks.filter(t=>t.status==='done');
+    const pendingTasks = tasks.filter(t=>t.status!=='done');
+    const overdueTasks = pendingTasks.filter(t=>t.due && t.due < todayKey);
+
+    // Focus minutes by day — last 30 days
+    const fmbd = State.stats.focusMinutesByDay || {};
+    const dayEntries = Object.entries(fmbd)
+      .sort((a,b)=>a[0].localeCompare(b[0]))
+      .slice(-30);
+    const totalFocusMins = dayEntries.reduce((s,[,v])=>s+v, 0);
+
+    // Day-of-week pattern
+    const dowMap = {0:'Sun',1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat'};
+    const dowTotals = {Mon:0,Tue:0,Wed:0,Thu:0,Fri:0,Sat:0,Sun:0};
+    const dowCounts = {Mon:0,Tue:0,Wed:0,Thu:0,Fri:0,Sat:0,Sun:0};
+    dayEntries.forEach(([d,mins])=>{
+      const dt = new Date(d+'T12:00:00');
+      const k = dowMap[dt.getDay()];
+      dowTotals[k] += mins; dowCounts[k]++;
+    });
+    const dowAvg = Object.entries(dowTotals).map(([k,v])=>`${k}: ${dowCounts[k]?Math.round(v/dowCounts[k]):0} min`).join(', ');
+
+    // Planner blocks summary
+    const allBlocks = Object.values(State.planner.blocks||{}).flat();
+    const blockTypes = {};
+    allBlocks.forEach(b=>{ blockTypes[b.type]=(blockTypes[b.type]||0)+1; });
+    const blockSummary = Object.entries(blockTypes).map(([t,c])=>`${t}: ${c}`).join(', ');
+
+    // Notes count
+    const notesCount = (State.notes||[]).length;
+
+    // Stats
+    const streak = State.stats.currentStreak || 0;
+    const pomodoros = State.stats.totalPomodoros || 0;
+    const missedTasks = (State.stats.missedTasks||[]).length;
+    const doneOnTime = (State.stats.doneOnTimeTasks||[]).length;
+
+    // This week focus
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - now.getDay() + 1);
+    const weekMins = Array.from({length:7},(_,i)=>{
+      const d = new Date(weekStart); d.setDate(weekStart.getDate()+i);
+      return fmbd[dateStr(d)]||0;
+    }).reduce((a,b)=>a+b,0);
+
+    // This month focus
+    const monthPrefix = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    const monthMins = dayEntries.filter(([d])=>d.startsWith(monthPrefix)).reduce((s,[,v])=>s+v,0);
+
+    return `
+APP DATA SUMMARY (today: ${todayKey}):
+- Total tasks: ${tasks.length} | Done: ${doneTasks.length} | Pending: ${pendingTasks.length} | Overdue: ${overdueTasks.length}
+- Task categories: ${[...new Set(tasks.map(t=>t.category))].join(', ')||'none'}
+- High/critical priority pending: ${pendingTasks.filter(t=>t.priority==='critical'||t.priority==='high').length}
+- Focus this week: ${Math.round(weekMins/60*10)/10} hours (${weekMins} min)
+- Focus this month: ${Math.round(monthMins/60*10)/10} hours (${monthMins} min)
+- Total focus (last 30 days): ${Math.round(totalFocusMins/60*10)/10} hours
+- Avg focus by day of week: ${dowAvg}
+- Current streak: ${streak} days | Total pomodoros: ${pomodoros}
+- Tasks done on time: ${doneOnTime} | Missed/overdue: ${missedTasks}
+- Planner block types: ${blockSummary||'none'}
+- Notes: ${notesCount}
+- Pending tasks sample: ${pendingTasks.slice(0,8).map(t=>`"${t.text}"(${t.priority||'?'},${t.category||'?'}${t.due?',due:'+t.due:''})`).join('; ')||'none'}
+`.trim();
+  }
+
+  /* ── Call Claude API ── */
+  async function callClaude(systemPrompt, userMessage){
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }]
+      })
+    });
+    if(!resp.ok) throw new Error(`API error ${resp.status}`);
+    const data = await resp.json();
+    return data.content.map(b=>b.text||'').join('');
+  }
+
+  /* ── 1. GOAL BREAKDOWN ── */
+  const analyseGoalBtn = $('analyseGoalBtn');
+  const goalInputText = $('goalInputText');
+  const goalAnalysisResult = $('goalAnalysisResult');
+  const goalTasksPreview = $('goalTasksPreview');
+  const goalTasksList = $('goalTasksList');
+  const addAllGoalTasksBtn = $('addAllGoalTasksBtn');
+  let suggestedTasks = [];
+
+  if(analyseGoalBtn){
+    analyseGoalBtn.addEventListener('click', async ()=>{
+      const goal = (goalInputText.value||'').trim();
+      if(!goal){ toast('Please describe your goal first', 'warn'); return; }
+      const category = $('goalCategory').value;
+      const timeframe = $('goalTimeframe').value;
+
+      analyseGoalBtn.disabled = true;
+      analyseGoalBtn.textContent = '◬ Analysing…';
+      goalAnalysisResult.style.display = 'block';
+      goalAnalysisResult.innerHTML = loadingHTML('Breaking down your goal…');
+      goalTasksPreview.style.display = 'none';
+
+      const appCtx = buildAppContext();
+      const system = `You are an expert productivity coach embedded in a focus/task app called Focus. 
+The user has provided their goal. Your job is to:
+1. Write a short encouraging analysis (2-3 sentences) of the goal's feasibility given their data.
+2. Output a JSON block of suggested tasks to achieve the goal.
+
+Format your response EXACTLY like this — no other text:
+<analysis>
+Your 2-3 sentence analysis here using markdown (**bold** for key points).
+</analysis>
+<tasks>
+[
+  {"text": "Task title", "priority": "high", "category": "${category}", "due": "YYYY-MM-DD or empty"},
+  ...
+]
+</tasks>
+Generate 5-10 specific, actionable tasks. Use realistic due dates relative to today (${todayStr()}) within the ${timeframe} timeframe. Keep task titles concise (under 60 chars). Prioritise appropriately.`;
+
+      try{
+        const raw = await callClaude(system, `My goal: ${goal}\nTimeframe: ${timeframe}\nCategory: ${category}\n\nMy current productivity data:\n${appCtx}`);
+
+        // Parse analysis
+        const analysisMatch = raw.match(/<analysis>([\s\S]*?)<\/analysis>/);
+        const tasksMatch = raw.match(/<tasks>([\s\S]*?)<\/tasks>/);
+
+        if(analysisMatch){
+          goalAnalysisResult.innerHTML = `<div class="ai-result-body"><p>${renderMarkdown(analysisMatch[1].trim())}</p></div>`;
+        } else {
+          goalAnalysisResult.innerHTML = `<div class="ai-result-body"><p>${renderMarkdown(raw.substring(0,400))}</p></div>`;
+        }
+
+        // Parse tasks
+        if(tasksMatch){
+          try{
+            suggestedTasks = JSON.parse(tasksMatch[1].trim());
+            goalTasksList.innerHTML = '';
+            suggestedTasks.forEach((t,i)=>{
+              const li = document.createElement('li');
+              li.className = 'goal-task-item';
+              li.innerHTML = `<input type="checkbox" checked data-idx="${i}"><span class="gtask-text">${t.text}</span><span class="gtask-meta">${t.priority||'medium'} · ${t.category||category}${t.due?' · '+t.due:''}</span>`;
+              goalTasksList.appendChild(li);
+            });
+            goalTasksPreview.style.display = 'block';
+          }catch(e){ console.warn('Tasks parse error',e); }
+        }
+      }catch(e){
+        goalAnalysisResult.innerHTML = `<div class="ai-result-body"><p style="color:var(--red)">Analysis failed. Please try again.</p></div>`;
+        console.error(e);
+      }
+      analyseGoalBtn.disabled = false;
+      analyseGoalBtn.textContent = '◬ Analyse Goal';
+    });
+  }
+
+  /* Add selected tasks to the task list */
+  if(addAllGoalTasksBtn){
+    addAllGoalTasksBtn.addEventListener('click', ()=>{
+      const checked = goalTasksList.querySelectorAll('input[type="checkbox"]:checked');
+      let added = 0;
+      checked.forEach(cb=>{
+        const idx = parseInt(cb.dataset.idx);
+        const t = suggestedTasks[idx];
+        if(!t) return;
+        State.tasks.push({
+          id: Date.now() + Math.random(),
+          text: t.text,
+          category: t.category || 'work',
+          priority: t.priority || 'medium',
+          status: 'not-started',
+          due: t.due || '',
+          created: todayStr(),
+          notes: ''
+        });
+        added++;
+      });
+      if(added){
+        State.save();
+        try{ renderTaskList(); }catch(e){}
+        toast(`${added} task${added>1?'s':''} added ✓`, 'success');
+        goalTasksPreview.style.display = 'none';
+        goalInputText.value = '';
+        goalAnalysisResult.innerHTML = '';
+        goalAnalysisResult.style.display = 'none';
+      } else {
+        toast('Select at least one task', 'warn');
+      }
+    });
+  }
+
+  /* ── 2. FOCUS PATTERN INSIGHTS ── */
+  const analysePatternBtn = $('analysePatternBtn');
+  const patternResult = $('patternResult');
+
+  if(analysePatternBtn){
+    analysePatternBtn.addEventListener('click', async ()=>{
+      analysePatternBtn.disabled = true;
+      analysePatternBtn.textContent = '◬ Analysing…';
+      patternResult.innerHTML = loadingHTML('Detecting your focus patterns…');
+
+      const appCtx = buildAppContext();
+      const system = `You are a productivity intelligence engine inside an app called Focus. 
+Analyse the user's focus and task data and provide sharp, personalised insights.
+
+Structure your response with these exact sections using ### headers:
+### Your Peak Focus Days
+### Your Productivity Patterns  
+### Schedule Recommendations
+### What's Holding You Back
+
+Keep each section to 2-4 sentences. Be specific to the data — avoid generic advice. Use **bold** for key insights. If data is sparse, acknowledge it and give general guidance based on what's available.`;
+
+      try{
+        const raw = await callClaude(system, `My productivity data:\n${appCtx}`);
+        patternResult.innerHTML = `<div class="ai-result-body">${renderMarkdown(raw)}</div>`;
+      }catch(e){
+        patternResult.innerHTML = `<div class="ai-result-body"><p style="color:var(--red)">Analysis failed. Please try again.</p></div>`;
+        console.error(e);
+      }
+      analysePatternBtn.disabled = false;
+      analysePatternBtn.textContent = '◬ Analyse Now';
+    });
+  }
+
+  /* ── 3. WEEKLY / MONTHLY REVIEW ── */
+  const analyseReviewBtn = $('analyseReviewBtn');
+  const reviewResult = $('reviewResult');
+
+  if(analyseReviewBtn){
+    analyseReviewBtn.addEventListener('click', async ()=>{
+      const period = $('reviewPeriod').value;
+      analyseReviewBtn.disabled = true;
+      analyseReviewBtn.textContent = '◬ Analysing…';
+      reviewResult.innerHTML = loadingHTML(`Generating your ${period}ly review…`);
+
+      const appCtx = buildAppContext();
+      const system = `You are an expert productivity coach writing a ${period === 'week' ? 'weekly' : 'monthly'} review inside a focus app called Focus.
+
+Structure your response with these exact sections using ### headers:
+### Overall Performance
+### Focus & Deep Work
+### Task Completion
+### Wins This ${period === 'week' ? 'Week' : 'Month'}
+### Areas to Improve
+### Goals for Next ${period === 'week' ? 'Week' : 'Month'}
+
+Keep each section to 2-4 sentences. Be specific and encouraging. Use **bold** for key numbers and insights. Base everything on the actual data provided — don't invent numbers. If a metric is low, frame it constructively.`;
+
+      try{
+        const raw = await callClaude(system, `Review period: ${period}\n\nMy productivity data:\n${appCtx}`);
+        reviewResult.innerHTML = `<div class="ai-result-body">${renderMarkdown(raw)}</div>`;
+      }catch(e){
+        reviewResult.innerHTML = `<div class="ai-result-body"><p style="color:var(--red)">Analysis failed. Please try again.</p></div>`;
+        console.error(e);
+      }
+      analyseReviewBtn.disabled = false;
+      analyseReviewBtn.textContent = '◬ Analyse Now';
+    });
+  }
+
+})();
+
 // ══════════════════════════════════════════════════════
 //  SUPABASE AUTH — Google OAuth
 // ══════════════════════════════════════════════════════
