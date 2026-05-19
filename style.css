@@ -399,6 +399,10 @@ body.light-mode .timer-dur-input:focus { border-color: var(--accent); box-shadow
 body.light-mode .filter-btn        { background: #fff; border-color: rgba(0,0,0,0.10); color: #374151; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
 body.light-mode .filter-btn:hover  { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
 body.light-mode .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 2px 10px var(--accent-glow); }
+body.light-mode .task-sort-group   { background: #fff; border-color: rgba(0,0,0,0.10); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+body.light-mode .task-sort-btn     { color: #374151; }
+body.light-mode .task-sort-btn:hover { color: var(--accent); background: var(--accent-dim); }
+body.light-mode .task-sort-btn.active { background: var(--accent); color: #fff; }
 
 body.light-mode .task-item.task-grid-row {
   background: #ffffff;
@@ -1043,6 +1047,13 @@ body.light-mode input[type="date"].task-select { color-scheme:light; }
 .filter-btn:hover { border-color:var(--border-hover); color:var(--text-primary); }
 .filter-btn.active { background:var(--accent-dim); border-color:var(--accent); color:var(--accent); }
 .filter-sep { width:1px; height:20px; background:var(--border); margin:0 4px; }
+
+/* ── Task sort group ── */
+.task-sort-group { display:flex; align-items:center; gap:3px; background:var(--bg-card-alt); border:1px solid var(--border); border-radius:50px; padding:3px 6px; }
+.task-sort-label { font-family:var(--font-mono); font-size:10px; color:var(--text-muted); letter-spacing:1px; padding-right:4px; text-transform:uppercase; }
+.task-sort-btn { padding:3px 11px; border-radius:50px; border:none; background:transparent; color:var(--text-secondary); font-family:var(--font-display); font-size:12px; cursor:pointer; transition:all 0.18s; }
+.task-sort-btn:hover { color:var(--text-primary); background:var(--accent-dim); }
+.task-sort-btn.active { background:var(--accent); color:#fff; font-weight:600; }
 
 /* Task list & grid */
 .task-list-container { overflow-x:auto; }
@@ -1996,9 +2007,65 @@ body.light-mode .note-color-pill.active { border-color:rgba(0,0,0,0.70); box-sha
     font-size: 11px;
     line-height: 1.5;
   }
-  .notes-layout { grid-template-columns:1fr; height:auto; overflow-x:hidden; }
-  .notes-sidebar { height:220px; min-width:0; }
-  .notes-editor-wrap { height:calc(100vh - 400px); min-height:300px; min-width:0; overflow-x:hidden; }
+  .notes-layout { grid-template-columns:1fr; height:auto; overflow-x:hidden; gap:12px; }
+  /* ── Mobile notes: horizontal scrollable card strip ── */
+  .notes-sidebar {
+    height:auto; min-width:0;
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .notes-search { width:100%; box-sizing:border-box; }
+  .notes-list {
+    display:flex !important;
+    flex-direction:row !important;
+    flex-wrap:nowrap !important;
+    gap:10px !important;
+    overflow-x:auto !important;
+    overflow-y:hidden !important;
+    padding:6px 2px 10px !important;
+    scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;
+    flex:unset !important;
+    height:auto !important;
+  }
+  .notes-list::-webkit-scrollbar { height:3px; width:auto; }
+  .notes-list::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+  /* Each note card in horizontal strip */
+  .note-list-item {
+    flex-shrink:0 !important;
+    width:160px !important;
+    min-width:160px !important;
+    height:110px !important;
+    flex-direction:column !important;
+    align-items:flex-start !important;
+    padding:10px 12px !important;
+    border-radius:12px !important;
+    border-left-width:4px !important;
+    scroll-snap-align:start;
+    position:relative;
+    overflow:hidden;
+  }
+  /* Color fills — soft tinted background on mobile cards */
+  .note-list-item[data-color="default"] { background: rgba(232,168,64,0.10) !important; }
+  .note-list-item[data-color="blue"]    { background: rgba(74,143,232,0.12) !important; }
+  .note-list-item[data-color="green"]   { background: rgba(77,216,122,0.12) !important; }
+  .note-list-item[data-color="red"]     { background: rgba(255,90,83,0.12) !important; }
+  .note-list-item[data-color="purple"]  { background: rgba(155,108,232,0.12) !important; }
+  .note-list-item[data-color="orange"]  { background: rgba(240,115,64,0.12) !important; }
+  .note-list-drag-handle { display:none !important; }
+  .note-list-body { width:100%; min-width:0; flex:1; }
+  .note-list-title { font-size:13px !important; margin-bottom:5px !important; }
+  .note-list-preview { font-size:11px !important; line-clamp:2; -webkit-line-clamp:2; display:-webkit-box !important; -webkit-box-orient:vertical !important; overflow:hidden !important; white-space:normal !important; line-height:1.45; }
+  .note-list-meta { font-size:9px !important; margin-top:5px !important; }
+  .note-list-actions {
+    position:absolute; top:6px; right:6px;
+    flex-direction:row !important; gap:2px !important;
+    opacity:0 !important; /* always visible on tap/focus below */
+  }
+  .note-list-item.active .note-list-actions { opacity:1 !important; }
+  .note-list-edit-btn,.note-list-del-btn { font-size:11px !important; padding:2px 4px !important; }
+  .notes-list-empty { white-space:nowrap; padding:14px 20px; font-size:12px; }
+  /* Editor shrinks to fill remaining screen */
+  .notes-editor-wrap { height:calc(100vh - 360px); min-height:280px; min-width:0; overflow-x:hidden; }
   .note-top-bar { flex-wrap:wrap; gap:8px; padding:8px 12px; min-width:0; }
   .note-title-input { min-width:0; flex:1 1 120px; }
   .note-color-picker { flex-wrap:wrap; flex-shrink:1; gap:4px; }
@@ -2009,6 +2076,9 @@ body.light-mode .note-color-pill.active { border-color:rgba(0,0,0,0.70); box-sha
   .pomo-tab { font-size:13px; padding:7px 14px; }
   .filter-bar { gap:4px; }
   .filter-btn { font-size:12px; padding:4px 10px; }
+  .task-sort-group { padding:2px 5px; gap:2px; }
+  .task-sort-label { font-size:9px; }
+  .task-sort-btn { font-size:11px; padding:3px 8px; }
   .task-meta { gap:4px; flex-wrap:wrap; }
   .task-select { font-size:11px; padding:5px 7px; }
   .add-task-card { padding:12px; }
@@ -2047,7 +2117,7 @@ body.light-mode .note-color-pill.active { border-color:rgba(0,0,0,0.70); box-sha
   }
   .task-grid-header {
     display: grid;
-    grid-template-columns: 16px 1fr 72px 80px 64px 20px !important;
+    grid-template-columns: 16px 1fr 84px 72px 64px 20px !important;
     gap: 1px;
     padding: 4px 6px;
     font-size: 7px;
@@ -2057,7 +2127,7 @@ body.light-mode .note-color-pill.active { border-color:rgba(0,0,0,0.70); box-sha
   }
   .task-item.task-grid-row {
     display: grid !important;
-    grid-template-columns: 16px 1fr 72px 80px 64px 20px !important;
+    grid-template-columns: 16px 1fr 84px 72px 64px 20px !important;
     gap: 1px;
     padding: 3px 6px;
     margin-bottom: 2px;
@@ -2089,7 +2159,13 @@ body.light-mode .note-color-pill.active { border-color:rgba(0,0,0,0.70); box-sha
     padding: 1px 3px;
   }
   .task-priority-cell,
-  .task-status-cell,
+  .task-status-cell {
+    border-right: 1px solid var(--border);
+    padding: 3px 3px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+  }
   .task-due-cell {
     border-right: 1px solid var(--border);
     padding: 1px 2px;
@@ -2097,12 +2173,25 @@ body.light-mode .note-color-pill.active { border-color:rgba(0,0,0,0.70); box-sha
   }
   .task-priority-select,
   .task-status-select {
-    font-size: 8px;
-    padding: 2px 1px;
+    /* Match desktop: soft rounded rectangle, colored background, no border */
     width: 100%;
+    min-width: 0;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 1px;
+    font-family: var(--font-display);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: -0.2px;
     text-align: center;
-    text-overflow: ellipsis;
+    appearance: none;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.18s;
     overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    box-sizing: border-box;
   }
   .task-due-input {
     font-size: 7px;
@@ -2214,19 +2303,41 @@ body.light-mode .note-color-pill.active { border-color:rgba(0,0,0,0.70); box-sha
   /* Tighter task grid for very small screens — still contained, no scroll */
   .task-list { min-width: unset; width: 100%; }
   .task-grid-header {
-    grid-template-columns: 16px 1fr 60px 68px 60px 18px !important;
+    grid-template-columns: 16px 1fr 72px 60px 56px 18px !important;
     font-size: 7px;
     letter-spacing: 0.8px;
     padding: 4px 4px;
   }
   .task-item.task-grid-row {
-    grid-template-columns: 16px 1fr 60px 68px 60px 18px !important;
+    grid-template-columns: 16px 1fr 72px 60px 56px 18px !important;
     padding: 4px 4px;
   }
   .task-name { font-size: 11px; }
   .task-priority-select,
-  .task-status-select { font-size: 8px; padding: 2px 2px; }
+  .task-status-select { font-size: 8px; padding: 3px 2px; border-radius: 6px; }
   .task-due-input { font-size: 7px; }
+  .task-sort-group { padding:2px 4px; gap:1px; }
+  .task-sort-label { display:none; }
+  .task-sort-btn { font-size:10px; padding:2px 7px; }
+}
+
+/* ── Mobile scroll-reveal for stats cards ── */
+@keyframes scrollRevealUp {
+  from { opacity:0; transform:translateY(24px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+.stats-scroll-reveal {
+  opacity:0;
+  transform:translateY(24px);
+  transition: none;
+}
+.stats-scroll-reveal.revealed {
+  animation: scrollRevealUp 0.55s cubic-bezier(0.22,1,0.36,1) both;
+}
+/* Cards that are immediately visible (no scroll-reveal class) stay normal */
+#stats .card.revealed:not(.stats-scroll-reveal) {
+  opacity:1;
+  transform:none;
 }
 
 .note-tool-btn:active {
@@ -2978,18 +3089,37 @@ body.light-mode .note-color-pill.active { border-color:rgba(0,0,0,0.70); box-sha
   transform-origin: 50% 100%;
 }
 /* Stagger via nth-child — targets bar within col (always :nth-child(1) of col, so stagger cols instead) */
-.bar-chart-col:nth-child(1)  .bar-chart-bar { animation: chartBarIn 0.5s 0.10s cubic-bezier(0.34,1.56,0.64,1) both; }
-.bar-chart-col:nth-child(2)  .bar-chart-bar { animation: chartBarIn 0.5s 0.15s cubic-bezier(0.34,1.56,0.64,1) both; }
-.bar-chart-col:nth-child(3)  .bar-chart-bar { animation: chartBarIn 0.5s 0.20s cubic-bezier(0.34,1.56,0.64,1) both; }
-.bar-chart-col:nth-child(4)  .bar-chart-bar { animation: chartBarIn 0.5s 0.25s cubic-bezier(0.34,1.56,0.64,1) both; }
-.bar-chart-col:nth-child(5)  .bar-chart-bar { animation: chartBarIn 0.5s 0.30s cubic-bezier(0.34,1.56,0.64,1) both; }
-.bar-chart-col:nth-child(6)  .bar-chart-bar { animation: chartBarIn 0.5s 0.35s cubic-bezier(0.34,1.56,0.64,1) both; }
-.bar-chart-col:nth-child(7)  .bar-chart-bar { animation: chartBarIn 0.5s 0.40s cubic-bezier(0.34,1.56,0.64,1) both; }
-.bar-chart-col:nth-child(8)  .bar-chart-bar { animation: chartBarIn 0.5s 0.45s cubic-bezier(0.34,1.56,0.64,1) both; }
-.bar-chart-col:nth-child(9)  .bar-chart-bar { animation: chartBarIn 0.5s 0.50s cubic-bezier(0.34,1.56,0.64,1) both; }
-.bar-chart-col:nth-child(10) .bar-chart-bar { animation: chartBarIn 0.5s 0.55s cubic-bezier(0.34,1.56,0.64,1) both; }
-.bar-chart-col:nth-child(11) .bar-chart-bar { animation: chartBarIn 0.5s 0.60s cubic-bezier(0.34,1.56,0.64,1) both; }
-.bar-chart-col:nth-child(12) .bar-chart-bar { animation: chartBarIn 0.5s 0.65s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(1)  .bar-chart-bar { animation: chartBarIn 0.5s 0.05s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(2)  .bar-chart-bar { animation: chartBarIn 0.5s 0.08s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(3)  .bar-chart-bar { animation: chartBarIn 0.5s 0.11s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(4)  .bar-chart-bar { animation: chartBarIn 0.5s 0.14s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(5)  .bar-chart-bar { animation: chartBarIn 0.5s 0.17s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(6)  .bar-chart-bar { animation: chartBarIn 0.5s 0.20s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(7)  .bar-chart-bar { animation: chartBarIn 0.5s 0.23s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(8)  .bar-chart-bar { animation: chartBarIn 0.5s 0.26s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(9)  .bar-chart-bar { animation: chartBarIn 0.5s 0.29s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(10) .bar-chart-bar { animation: chartBarIn 0.5s 0.32s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(11) .bar-chart-bar { animation: chartBarIn 0.5s 0.35s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(12) .bar-chart-bar { animation: chartBarIn 0.5s 0.38s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(13) .bar-chart-bar { animation: chartBarIn 0.5s 0.41s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(14) .bar-chart-bar { animation: chartBarIn 0.5s 0.44s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(15) .bar-chart-bar { animation: chartBarIn 0.5s 0.47s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(16) .bar-chart-bar { animation: chartBarIn 0.5s 0.50s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(17) .bar-chart-bar { animation: chartBarIn 0.5s 0.53s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(18) .bar-chart-bar { animation: chartBarIn 0.5s 0.56s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(19) .bar-chart-bar { animation: chartBarIn 0.5s 0.59s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(20) .bar-chart-bar { animation: chartBarIn 0.5s 0.62s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(21) .bar-chart-bar { animation: chartBarIn 0.5s 0.65s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(22) .bar-chart-bar { animation: chartBarIn 0.5s 0.68s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(23) .bar-chart-bar { animation: chartBarIn 0.5s 0.71s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(24) .bar-chart-bar { animation: chartBarIn 0.5s 0.74s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(25) .bar-chart-bar { animation: chartBarIn 0.5s 0.77s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(26) .bar-chart-bar { animation: chartBarIn 0.5s 0.80s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(27) .bar-chart-bar { animation: chartBarIn 0.5s 0.83s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(28) .bar-chart-bar { animation: chartBarIn 0.5s 0.86s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(29) .bar-chart-bar { animation: chartBarIn 0.5s 0.89s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(30) .bar-chart-bar { animation: chartBarIn 0.5s 0.92s cubic-bezier(0.34,1.56,0.64,1) both; }
+.bar-chart-col:nth-child(31) .bar-chart-bar { animation: chartBarIn 0.5s 0.95s cubic-bezier(0.34,1.56,0.64,1) both; }
 
 .bar-chart-bar {
   transition: filter 0.2s, transform 0.2s;
