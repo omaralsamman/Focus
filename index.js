@@ -159,7 +159,14 @@ function showSection(name){
   const sec=document.getElementById(name); if(sec) sec.classList.add('active');
   document.querySelectorAll(`[data-section="${name}"]`).forEach(el=>el.classList.add('active'));
   if(name==='dashboard') updateDashboard();
-  if(name==='pomodoro'){ applyPomoModeColors(); }
+  if(name==='pomodoro'){
+    const activeTab = document.querySelector('.pomo-tab.active');
+    if(activeTab && activeTab.dataset.mode === 'stopwatch'){
+      showStopwatchView();
+    } else {
+      applyPomoModeColors();
+    }
+  }
   if(name==='stats'){ auditMissedTasks(); requestAnimationFrame(()=>{ requestAnimationFrame(updateStats); }); }
   if(name==='planner') renderPlanner();
   if(name==='tasks') renderTaskList();
@@ -361,8 +368,154 @@ $('resetBtn').addEventListener('click',()=>resetTimer());
 $('skipBtn').addEventListener('click',()=>{clearInterval(POMO.intervalId);resetTimer(POMO.mode==='pomodoro'?'short':'pomodoro');});
 $$('.pomo-tab').forEach(t=>t.addEventListener('click',()=>{
   $$('.pomo-tab').forEach(x=>x.classList.remove('active')); t.classList.add('active');
-  POMO.session=1; resetTimer(t.dataset.mode);
+  if(t.dataset.mode==='stopwatch'){
+    showStopwatchView();
+  } else {
+    showPomoView();
+    POMO.session=1; resetTimer(t.dataset.mode);
+  }
 }));
+
+// ── Pomo / Stopwatch view switching ──
+function showPomoView(){
+  $('pomoTimerView').style.display='';
+  $('stopwatchView').style.display='none';
+  // restore pomo mode colors
+  const layout=document.querySelector('.pomodoro-center')||document.querySelector('.pomodoro-layout');
+  if(layout){ layout.classList.remove('pomo-mode-stopwatch'); }
+  applyPomoModeColors();
+}
+
+function showStopwatchView(){
+  $('pomoTimerView').style.display='none';
+  $('stopwatchView').style.display='';
+  document.title='FOCUS';
+  // Apply stopwatch color class
+  const layout=document.querySelector('.pomodoro-center')||document.querySelector('.pomodoro-layout');
+  if(layout){
+    layout.classList.remove('pomo-mode-pomodoro','pomo-mode-short','pomo-mode-long');
+    layout.classList.add('pomo-mode-stopwatch');
+  }
+}
+
+// ── STOPWATCH ──
+const SW = {
+  running: false,
+  intervalId: null,
+  elapsedMs: 0,
+  startTime: null,     // Date.now() when last started
+  laps: [],
+  lastLapMs: 0,
+};
+
+function fmtSw(ms){
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+}
+
+function fmtSwMs(ms){
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  const cs = Math.floor((ms % 1000) / 10);
+  return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}.${cs.toString().padStart(2,'0')}`;
+}
+
+function updateSwUI(){
+  const elapsed = SW.running ? (SW.elapsedMs + (Date.now() - SW.startTime)) : SW.elapsedMs;
+  $('swDisplay').textContent = fmtSw(elapsed);
+  document.title = SW.running ? `${fmtSw(elapsed)} — FOCUS` : 'FOCUS';
+  // Animate arc — one full rotation every 60 seconds
+  const circ = 816.8;
+  const secFrac = (elapsed / 1000 % 60) / 60;
+  $('swRingProgress').style.strokeDashoffset = circ - circ * secFrac;
+}
+
+function swTick(){
+  updateSwUI();
+}
+
+$('swStartStopBtn').addEventListener('click',()=>{
+  if(SW.running){
+    // Pause
+    SW.elapsedMs += Date.now() - SW.startTime;
+    SW.running = false;
+    clearInterval(SW.intervalId);
+    $('swStartStopBtn').textContent = '▶ Resume';
+    $('swStartStopBtn').classList.remove('sw-running');
+    updateSwUI();
+    document.title = 'FOCUS';
+    // Award points for time tracked so far (min 1 min)
+    const mins = Math.floor(SW.elapsedMs / 60000);
+    if(mins >= 1 && State.rankSystemEnabled){
+      const pts = Math.round(mins * 0.5 + 2);
+      const task = $('swTaskInput').value.trim() || 'Stopwatch session';
+      addRankEvent(`⏱ Stopwatch: ${task} (${mins}m)`, pts);
+      // Add to focus minutes stats
+      const today = todayStr();
+      State.stats.focusMinutesByDay[today] = (State.stats.focusMinutesByDay[today]||0) + mins;
+      State.stats.totalPomodoros++;
+      updateStreak();
+      State.save();
+      // Log in session log
+      const log = $('sessionLog');
+      const entry = document.createElement('li'); entry.className = 'log-entry';
+      const now = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+      entry.innerHTML = `<span class="log-type sw-log-icon">⏱</span><span class="log-topic">${task}</span><span class="log-meta">${now} · ${mins}m · stopwatch</span>`;
+      if(log.querySelector('.log-empty')) log.innerHTML='';
+      log.prepend(entry);
+      toast(`+${pts} pts — ${mins}m tracked! ⏱`, 'success');
+    }
+  } else {
+    // Start / Resume
+    SW.startTime = Date.now();
+    SW.running = true;
+    clearInterval(SW.intervalId);
+    SW.intervalId = setInterval(swTick, 50); // 50ms for smooth display
+    $('swStartStopBtn').textContent = '⏸ Pause';
+    $('swStartStopBtn').classList.add('sw-running');
+  }
+});
+
+$('swResetBtn').addEventListener('click',()=>{
+  clearInterval(SW.intervalId);
+  SW.running = false;
+  SW.elapsedMs = 0;
+  SW.startTime = null;
+  SW.laps = [];
+  SW.lastLapMs = 0;
+  $('swStartStopBtn').textContent = '▶ Start';
+  $('swStartStopBtn').classList.remove('sw-running');
+  $('swDisplay').textContent = '00:00:00';
+  $('swLapCount').textContent = '';
+  $('swRingProgress').style.strokeDashoffset = '816.8';
+  $('swLapsWrap').style.display = 'none';
+  $('swLapList').innerHTML = '';
+  document.title = 'FOCUS';
+});
+
+$('swLapBtn').addEventListener('click',()=>{
+  if(!SW.running && SW.elapsedMs === 0) return;
+  const elapsed = SW.running ? (SW.elapsedMs + (Date.now() - SW.startTime)) : SW.elapsedMs;
+  const lapTime = elapsed - SW.lastLapMs;
+  SW.laps.push({ lap: SW.laps.length + 1, total: elapsed, split: lapTime });
+  SW.lastLapMs = elapsed;
+  // Render laps
+  $('swLapsWrap').style.display = '';
+  $('swLapList').innerHTML = [...SW.laps].reverse().map((l,i,arr)=>{
+    const fastest = arr.reduce((mn,x)=>x.split < mn.split ? x : mn, arr[0]);
+    const slowest = arr.reduce((mx,x)=>x.split > mx.split ? x : mx, arr[0]);
+    const cls = arr.length > 1 ? (l.lap===fastest.lap ? 'lap-fast' : l.lap===slowest.lap ? 'lap-slow' : '') : '';
+    return `<li class="sw-lap-item ${cls}">
+      <span class="lap-num">Lap ${l.lap}</span>
+      <span class="lap-split">${fmtSwMs(l.split)}</span>
+      <span class="lap-total">${fmtSwMs(l.total)}</span>
+    </li>`;
+  }).join('');
+});
 // ── Timer duration inputs — respects hr/min unit selects ──
 // Durations are always stored in MINUTES internally.
 const UNIT_SELECT_MAP = {
