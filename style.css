@@ -961,9 +961,11 @@ body { font-family:var(--font-display); background:var(--bg-deep); color:var(--t
 .month-day.today-marker { outline:2px solid #4dd87a; outline-offset:2px; }
 
 /* ── TIMER ── */
-.pomodoro-layout { display:grid; grid-template-columns:1fr 300px; gap:26px; align-items:start; }
-.pomodoro-center { display:flex; flex-direction:column; align-items:center; }
-.pomo-tabs { display:flex; gap:5px; background:var(--bg-card); border:1px solid var(--border); border-radius:50px; padding:4px; margin-bottom:28px; }
+.pomodoro-layout { display:flex; flex-direction:row; align-items:start; gap:26px; }
+.pomodoro-center { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1; min-width:0; }
+#pomoTimerView, #stopwatchView { display:flex; flex-direction:column; align-items:center; width:300px; }
+.pomodoro-sidebar { flex-shrink:0; width:300px; display:flex; flex-direction:column; }
+.pomo-tabs { display:flex; gap:5px; background:var(--bg-card); border:1px solid var(--border); border-radius:50px; padding:4px; margin-bottom:28px; align-self:center; }
 .pomo-tab { padding:8px 20px; border:none; border-radius:50px; background:transparent; color:var(--text-secondary); font-family:var(--font-display); font-size:15px; cursor:pointer; transition:all 0.2s; }
 .pomo-tab.active { background:var(--accent); color:#000; font-weight:600; }
 
@@ -981,6 +983,32 @@ body { font-family:var(--font-display); background:var(--bg-deep); color:var(--t
 .pomo-mode-pomodoro #ringProgress { stroke:#38bdf8; }
 .pomo-mode-short    #ringProgress { stroke:#86efac; }
 .pomo-mode-long     #ringProgress { stroke:#22c55e; }
+
+/* ── STOPWATCH mode colors ── */
+.pomo-mode-stopwatch .pomo-tab[data-mode="stopwatch"].active { background:#38bdf8; color:#000; }
+.pomo-mode-stopwatch .ctrl-btn.primary,
+.pomo-mode-stopwatch .stopwatch-primary { background:#38bdf8 !important; color:#000 !important; }
+.pomo-mode-stopwatch .stopwatch-primary.sw-running { background:#0ea5e9 !important; }
+.stopwatch-ring-arc { stroke:#38bdf8; filter:drop-shadow(0 0 8px rgba(56,189,248,0.55)); transition:stroke-dashoffset 0.08s linear; }
+.stopwatch-label-top { color:#38bdf8; }
+.stopwatch-display { color:#38bdf8; }
+
+/* ── Stopwatch wrapper (same size as timer-ring-wrapper) ── */
+.stopwatch-ring-wrapper { position:relative; width:300px; height:300px; margin-bottom:28px; }
+
+/* ── Lap list ── */
+.stopwatch-laps-wrap { margin-top:16px; width:100%; max-width:360px; }
+.sw-lap-list { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:4px; max-height:200px; overflow-y:auto; }
+.sw-lap-item { display:flex; align-items:center; gap:8px; padding:6px 12px; border-radius:8px; background:var(--bg-card-alt); font-family:var(--font-mono); font-size:12px; color:var(--text-secondary); }
+.sw-lap-item .lap-num { flex:0 0 48px; color:var(--text-muted); font-size:11px; }
+.sw-lap-item .lap-split { flex:1; color:var(--text-primary); font-size:13px; }
+.sw-lap-item .lap-total { flex:0 0 80px; text-align:right; color:var(--text-muted); font-size:11px; }
+.sw-lap-item.lap-fast { background:rgba(56,189,248,0.12); color:#38bdf8; }
+.sw-lap-item.lap-fast .lap-split { color:#38bdf8; }
+.sw-lap-item.lap-slow { background:rgba(255,90,83,0.09); }
+.sw-lap-item.lap-slow .lap-split { color:#ff5a53; }
+.sw-lap-count { font-family:var(--font-mono); font-size:11px; color:var(--text-muted); letter-spacing:1px; margin-top:4px; }
+.sw-log-icon { color:#38bdf8 !important; }
 .timer-ring-wrapper { position:relative; width:300px; height:300px; margin-bottom:28px; }
 .timer-ring { width:100%; height:100%; transform:rotate(-90deg); }
 .ring-track { fill:none; stroke:rgba(255,255,255,0.05); stroke-width:6; }
@@ -989,13 +1017,13 @@ body { font-family:var(--font-display); background:var(--bg-deep); color:var(--t
 .timer-session-label { font-family:var(--font-mono); font-size:10px; letter-spacing:4px; color:var(--accent); margin-bottom:8px; }
 .timer-display { font-family:var(--font-mono); font-size:58px; font-weight:300; color:var(--text-primary); letter-spacing:2px; line-height:1; }
 .timer-session-count { font-family:var(--font-display); font-size:13px; color:var(--text-muted); margin-top:8px; }
-.timer-controls { display:flex; gap:12px; margin-bottom:28px; }
+.timer-controls { display:flex; gap:12px; margin-bottom:28px; justify-content:center; }
 .ctrl-btn { padding:11px 22px; border-radius:50px; font-family:var(--font-display); font-size:15px; font-weight:600; cursor:pointer; transition:all 0.2s; border:none; }
 .ctrl-btn.primary { background:var(--accent); color:#000; padding:11px 34px; }
 .ctrl-btn.primary:hover { filter:brightness(1.1); transform:scale(1.03); }
 .ctrl-btn.secondary { background:var(--bg-card-alt); color:var(--text-secondary); border:1px solid var(--border); }
 .ctrl-btn.secondary:hover { border-color:var(--border-hover); color:var(--text-primary); }
-.session-task-box { width:100%; max-width:440px; }
+.session-task-box { width:300px; max-width:440px; }
 .session-task-label { font-family:var(--font-mono); font-size:10px; text-transform:uppercase; letter-spacing:2px; color:var(--text-muted); margin-bottom:8px; }
 .session-task-input { width:100%; background:var(--bg-card-alt); border:1px solid var(--border); border-radius:var(--radius); padding:12px 16px; color:var(--text-primary); font-family:var(--font-display); font-size:16px; font-weight:300; outline:none; transition:border-color 0.2s; }
 .session-task-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim); }
@@ -1878,10 +1906,26 @@ body.light-mode .note-color-pill.active { border-color:rgba(0,0,0,0.70); box-sha
   /* Tip card */
   .tip-title { font-size:16px; margin-bottom:6px; }
   .tip-desc { font-size:12px; margin-bottom:8px; }
-  .pomodoro-layout { grid-template-columns:1fr; }
-  .pomodoro-sidebar { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .pomodoro-layout { flex-direction:column; }
+  .pomodoro-center { align-items:center; width:100%; padding-right:0; }
+  .pomodoro-sidebar { width:100%; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .pomo-history-card,.pomo-settings-card { margin-bottom:0; }
-  .timer-ring-wrapper { width:240px; height:240px; }
+  /* Compact timer settings on mobile */
+  .pomo-settings-card { padding:10px 12px !important; }
+  .pomo-settings-card .mini-card-label { font-size:9px; margin-bottom:8px; letter-spacing:1.5px; }
+  .pomo-settings-card .setting-row { padding:5px 0; font-size:12px; }
+  .pomo-settings-card .setting-control { gap:5px; }
+  .pomo-settings-card .timer-dur-input { width:38px; font-size:12px; padding:3px 5px; border-radius:6px; }
+  .pomo-settings-card .timer-unit-select { font-size:10px; padding:3px 4px; border-radius:6px; }
+  /* Session log compact */
+  .pomo-history-card { padding:10px 12px !important; }
+  .pomo-history-card .mini-card-label { font-size:9px; margin-bottom:8px; letter-spacing:1.5px; }
+  .log-entry { font-size:11px; padding:5px 0; }
+  .log-meta { font-size:10px; }
+  .timer-ring-wrapper { width:240px; height:240px; align-self:center; }
+  .stopwatch-ring-wrapper { width:240px; height:240px; align-self:center; }
+  .pomo-tabs { align-self:center; justify-content:center; width:auto; max-width:100%; }
+  #pomoTimerView, #stopwatchView { display:flex; flex-direction:column; align-items:center; width:100%; }
   .timer-display { font-size:46px; }
   .stats-grid { grid-template-columns:1fr 1fr; gap:10px; }
   .big-stat-card { grid-column:span 1; padding:10px 8px; }
@@ -2072,8 +2116,8 @@ body.light-mode .note-color-pill.active { border-color:rgba(0,0,0,0.70); box-sha
   .note-toolbar { gap:4px; padding:6px 10px; }
   .note-tool-btn { padding:4px 8px; font-size:12px; }
   .toast { bottom:calc(var(--mobile-nav-h) + 10px); right:12px; left:12px; max-width:none; }
-  .pomo-tabs { flex-wrap:wrap; border-radius:var(--radius); }
-  .pomo-tab { font-size:13px; padding:7px 14px; }
+  .pomo-tabs { flex-wrap:wrap; border-radius:var(--radius); justify-content:center; gap:3px; padding:3px; }
+  .pomo-tab { font-size:12px; padding:6px 11px; }
   .filter-bar { gap:4px; }
   .filter-btn { font-size:12px; padding:4px 10px; }
   .task-sort-group { padding:2px 5px; gap:2px; }
@@ -2284,6 +2328,7 @@ body.light-mode .note-color-pill.active { border-color:rgba(0,0,0,0.70); box-sha
   .week-bars { height:48px; overflow:hidden; }
   .week-bar { max-height:48px !important; }
   .timer-ring-wrapper { width:200px; height:200px; }
+  .stopwatch-ring-wrapper { width:200px; height:200px; }
   .timer-display { font-size:38px; }
   .stats-grid { grid-template-columns:1fr 1fr; gap:8px; }
   .big-stat-card { grid-column:span 1; padding:8px 6px; }
@@ -3464,17 +3509,7 @@ body.light-mode .tswatch.active {
   animation: timerPulse 3s ease-in-out infinite;
   filter: none; /* handled by timerPulse on the wrapper level */
 }
-/* Subtle glow behind the entire timer while running */
-.pomo-running .timer-ring-wrapper::before {
-  content: '';
-  position: absolute;
-  inset: -20px;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 65%);
-  animation: timerPulse 2s ease-in-out infinite;
-  pointer-events: none;
-  z-index: -1;
-}
+
 
 /* ─────────────────────────────────────────────
    19. PREFERS-REDUCED-MOTION FALLBACK
