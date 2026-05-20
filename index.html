@@ -125,26 +125,59 @@
             <button class="pomo-tab active" data-mode="pomodoro">Focus</button>
             <button class="pomo-tab" data-mode="short">Short Break</button>
             <button class="pomo-tab" data-mode="long">Long Break</button>
+            <button class="pomo-tab" data-mode="stopwatch">Timer</button>
           </div>
-          <div class="timer-ring-wrapper">
-            <svg class="timer-ring" viewBox="0 0 300 300">
-              <circle class="ring-track" cx="150" cy="150" r="130"/>
-              <circle class="ring-progress" id="ringProgress" cx="150" cy="150" r="130" stroke-dasharray="816.8" stroke-dashoffset="0"/>
-            </svg>
-            <div class="timer-center">
-              <div class="timer-session-label" id="timerSessionLabel">FOCUS</div>
-              <div class="timer-display" id="timerDisplay">25:00</div>
-              <div class="timer-session-count" id="sessionCount">Session 1 of 4</div>
+
+          <!-- Focus / Break Timer view -->
+          <div id="pomoTimerView">
+            <div class="timer-ring-wrapper">
+              <svg class="timer-ring" viewBox="0 0 300 300">
+                <circle class="ring-track" cx="150" cy="150" r="130"/>
+                <circle class="ring-progress" id="ringProgress" cx="150" cy="150" r="130" stroke-dasharray="816.8" stroke-dashoffset="0"/>
+              </svg>
+              <div class="timer-center">
+                <div class="timer-session-label" id="timerSessionLabel">FOCUS</div>
+                <div class="timer-display" id="timerDisplay">25:00</div>
+                <div class="timer-session-count" id="sessionCount">Session 1 of 4</div>
+              </div>
+            </div>
+            <div class="timer-controls">
+              <button class="ctrl-btn secondary" id="resetBtn">↺ Reset</button>
+              <button class="ctrl-btn primary" id="startStopBtn">▶ Start</button>
+              <button class="ctrl-btn secondary" id="skipBtn">Skip ↦</button>
+            </div>
+            <div class="session-task-box">
+              <div class="session-task-label">Working on</div>
+              <input type="text" id="sessionTaskInput" class="session-task-input" placeholder="What are you focusing on right now?" />
             </div>
           </div>
-          <div class="timer-controls">
-            <button class="ctrl-btn secondary" id="resetBtn">↺ Reset</button>
-            <button class="ctrl-btn primary" id="startStopBtn">▶ Start</button>
-            <button class="ctrl-btn secondary" id="skipBtn">Skip ↦</button>
-          </div>
-          <div class="session-task-box">
-            <div class="session-task-label">Working on</div>
-            <input type="text" id="sessionTaskInput" class="session-task-input" placeholder="What are you focusing on right now?" />
+
+          <!-- Stopwatch view -->
+          <div id="stopwatchView" style="display:none">
+            <div class="stopwatch-ring-wrapper">
+              <svg class="timer-ring stopwatch-ring-svg" viewBox="0 0 300 300">
+                <circle class="ring-track" cx="150" cy="150" r="130"/>
+                <circle class="ring-progress stopwatch-ring-arc" id="swRingProgress" cx="150" cy="150" r="130" stroke-dasharray="816.8" stroke-dashoffset="816.8"/>
+              </svg>
+              <div class="timer-center">
+                <div class="timer-session-label stopwatch-label-top">TIMER</div>
+                <div class="timer-display stopwatch-display" id="swDisplay">00:00:00</div>
+                <div class="stopwatch-laps-count" id="swLapCount"></div>
+              </div>
+            </div>
+            <div class="timer-controls">
+              <button class="ctrl-btn secondary" id="swResetBtn">↺ Reset</button>
+              <button class="ctrl-btn primary stopwatch-primary" id="swStartStopBtn">▶ Start</button>
+              <button class="ctrl-btn secondary" id="swLapBtn">◼ Stop</button>
+            </div>
+            <div class="session-task-box">
+              <div class="session-task-label">Working on</div>
+              <input type="text" id="swTaskInput" class="session-task-input" placeholder="What are you timing?" />
+            </div>
+            <div class="stopwatch-laps-wrap" id="swLapsWrap" style="display:none">
+              <div class="mini-card-label" style="margin-bottom:8px">Split Times</div>
+              <ul class="sw-lap-list" id="swLapList"></ul>
+            </div>
           </div>
         </div>
         <div class="pomodoro-sidebar">
