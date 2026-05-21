@@ -440,7 +440,7 @@ function swTick(){
 
 $('swStartStopBtn').addEventListener('click',()=>{
   if(SW.running){
-    // Pause
+    // Pause — just stop the clock, no points awarded yet
     SW.elapsedMs += Date.now() - SW.startTime;
     SW.running = false;
     clearInterval(SW.intervalId);
@@ -448,27 +448,6 @@ $('swStartStopBtn').addEventListener('click',()=>{
     $('swStartStopBtn').classList.remove('sw-running');
     updateSwUI();
     document.title = 'FOCUS';
-    // Award points for time tracked so far (min 1 min)
-    const mins = Math.floor(SW.elapsedMs / 60000);
-    if(mins >= 1 && State.rankSystemEnabled){
-      const pts = Math.round(mins * 0.5 + 2);
-      const task = $('swTaskInput').value.trim() || 'Stopwatch session';
-      addRankEvent(`⏱ Stopwatch: ${task} (${mins}m)`, pts);
-      // Add to focus minutes stats
-      const today = todayStr();
-      State.stats.focusMinutesByDay[today] = (State.stats.focusMinutesByDay[today]||0) + mins;
-      State.stats.totalPomodoros++;
-      updateStreak();
-      State.save();
-      // Log in session log
-      const log = $('sessionLog');
-      const entry = document.createElement('li'); entry.className = 'log-entry';
-      const now = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
-      entry.innerHTML = `<span class="log-type sw-log-icon">⏱</span><span class="log-topic">${task}</span><span class="log-meta">${now} · ${mins}m · stopwatch</span>`;
-      if(log.querySelector('.log-empty')) log.innerHTML='';
-      log.prepend(entry);
-      toast(`+${pts} pts — ${mins}m tracked! ⏱`, 'success');
-    }
   } else {
     // Start / Resume
     SW.startTime = Date.now();
@@ -481,8 +460,38 @@ $('swStartStopBtn').addEventListener('click',()=>{
 });
 
 $('swResetBtn').addEventListener('click',()=>{
+  // If the stopwatch is still running, capture the final elapsed time first
+  if(SW.running){
+    SW.elapsedMs += Date.now() - SW.startTime;
+    SW.running = false;
+  }
   clearInterval(SW.intervalId);
-  SW.running = false;
+
+  // Award points and log the session on reset (only if at least 1 min was tracked)
+  const mins = Math.floor(SW.elapsedMs / 60000);
+  if(mins >= 1){
+    const task = $('swTaskInput').value.trim() || 'Stopwatch session';
+    if(State.rankSystemEnabled){
+      const pts = Math.round(mins * 0.5 + 2);
+      addRankEvent(`⏱ Stopwatch: ${task} (${mins}m)`, pts);
+      toast(`+${pts} pts — ${mins}m tracked! ⏱`, 'success');
+    }
+    // Add to focus minutes stats
+    const today = todayStr();
+    State.stats.focusMinutesByDay[today] = (State.stats.focusMinutesByDay[today]||0) + mins;
+    State.stats.totalPomodoros++;
+    updateStreak();
+    State.save();
+    // Log in session log
+    const log = $('sessionLog');
+    const entry = document.createElement('li'); entry.className = 'log-entry';
+    const now = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+    entry.innerHTML = `<span class="log-type sw-log-icon">⏱</span><span class="log-topic">${task}</span><span class="log-meta">${now} · ${mins}m · stopwatch</span>`;
+    if(log.querySelector('.log-empty')) log.innerHTML='';
+    log.prepend(entry);
+  }
+
+  // Reset all state
   SW.elapsedMs = 0;
   SW.startTime = null;
   SW.laps = [];
