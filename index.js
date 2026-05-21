@@ -2431,9 +2431,9 @@ const RANKS = [
   { id:'bronze',   name:'BRONZE',   title:'Novice Focuser',     icon:'🥉', color:'#cd7f32', min:0,    max:125  },
   { id:'silver',   name:'SILVER',   title:'Rising Achiever',    icon:'🥈', color:'#c0c0c0', min:125,  max:300  },
   { id:'gold',     name:'GOLD',     title:'Dedicated Worker',   icon:'🥇', color:'#ffd700', min:300,  max:600  },
-  { id:'platinum', name:'PLATINUM', title:'Elite Performer',    icon:'💎', color:'#e5e4e2', min:600,  max:1100 },
-  { id:'diamond',  name:'DIAMOND',  title:'Master of Focus',    icon:'🔷', color:'#b9f2ff', min:1100, max:2000 },
-  { id:'emerald',  name:'EMERALD',  title:'Legendary Grinder',  icon:'💚', color:'#50c878', min:2000, max:3500 },
+  { id:'platinum', name:'PLATINUM', title:'Elite Performer',    icon:'🪙', color:'#e5e4e2', min:600,  max:1100 },
+  { id:'diamond',  name:'DIAMOND',  title:'Master of Focus',    icon:'💎', color:'#b9f2ff', min:1100, max:2000 },
+  { id:'emerald',  name:'EMERALD',  title:'Legendary Grinder',  icon:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="52" height="52" style="display:inline-block;vertical-align:middle;image-rendering:pixelated"><rect x="5" y="0" width="2" height="1" fill="#00aa44"/><rect x="7" y="0" width="2" height="1" fill="#00cc55"/><rect x="9" y="0" width="2" height="1" fill="#00aa44"/><rect x="3" y="1" width="2" height="1" fill="#00aa44"/><rect x="5" y="1" width="6" height="1" fill="#00ff66"/><rect x="11" y="1" width="2" height="1" fill="#00aa44"/><rect x="2" y="2" width="1" height="1" fill="#008833"/><rect x="3" y="2" width="10" height="1" fill="#00dd55"/><rect x="13" y="2" width="1" height="1" fill="#008833"/><rect x="1" y="3" width="1" height="1" fill="#007722"/><rect x="2" y="3" width="12" height="1" fill="#00cc44"/><rect x="14" y="3" width="1" height="1" fill="#007722"/><rect x="1" y="4" width="14" height="1" fill="#00bb44"/><rect x="1" y="5" width="14" height="1" fill="#00aa33"/><rect x="2" y="6" width="12" height="1" fill="#009933"/><rect x="2" y="7" width="12" height="1" fill="#008822"/><rect x="3" y="8" width="10" height="1" fill="#007722"/><rect x="4" y="9" width="8" height="1" fill="#006611"/><rect x="5" y="10" width="6" height="1" fill="#005511"/><rect x="6" y="11" width="4" height="1" fill="#004400"/><rect x="7" y="12" width="2" height="1" fill="#003300"/></svg>', color:'#50c878', min:2000, max:3500 },
   { id:'insanium', name:'INSANIUM', title:'Transcendent Being', icon:'🌀', color:'#ff00ff', min:3500, max:Infinity },
 ];
 
@@ -2473,7 +2473,7 @@ function updateRankCard(){
   card.className=`card rank-card rank-${rank.id}`;
   const aura=$('rankAura'); if(aura) aura.className=`rank-aura`;
 
-  $('rankBadgeIcon').textContent=rank.icon;
+  $('rankBadgeIcon').innerHTML=rank.icon;
   $('rankName').textContent=rank.name;
   $('rankTitle').textContent=rank.title;
   $('rankPtsDisplay').textContent=pts.toLocaleString()+' pts';
