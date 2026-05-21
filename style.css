@@ -2110,9 +2110,9 @@ body.light-mode .note-color-pill.active { border-color:rgba(0,0,0,0.70); box-sha
   .notes-list-empty { white-space:nowrap; padding:14px 20px; font-size:12px; }
   /* Editor shrinks to fill remaining screen */
   .notes-editor-wrap { height:calc(100vh - 360px); min-height:280px; min-width:0; overflow-x:hidden; }
-  .note-top-bar { flex-wrap:wrap; gap:8px; padding:8px 12px; min-width:0; }
-  .note-title-input { min-width:0; flex:1 1 120px; }
-  .note-color-picker { flex-wrap:wrap; flex-shrink:1; gap:4px; }
+  .note-top-bar { flex-wrap:wrap; gap:4px 8px; padding:8px 12px; min-width:0; }
+  .note-title-input { min-width:0; flex:1 1 100%; order:1; padding:10px 0 6px; font-size:20px; }
+  .note-color-picker { flex-wrap:wrap; flex-shrink:0; gap:4px; order:2; width:100%; padding-bottom:4px; }
   .note-toolbar { gap:4px; padding:6px 10px; }
   .note-tool-btn { padding:4px 8px; font-size:12px; }
   .toast { bottom:calc(var(--mobile-nav-h) + 10px); right:12px; left:12px; max-width:none; }
@@ -3906,41 +3906,52 @@ body.light-mode .tswatch.active {
   letter-spacing: 1px;
 }
 
-/* Rank colors */
-.rank-bronze .rank-name  { color: #e8a060; text-shadow: 0 0 20px rgba(205,127,50,0.5); }
-.rank-bronze .rank-title { color: #cd7f32; }
-.rank-bronze .rank-badge-icon { color: #cd7f32; }
-.rank-bronze .rank-pts-display { color: #d4955a; }
+/* ── RANK CARD — force white on all non-colored text (dark bg in every theme/mode) */
+.rank-card-inner,
+.rank-card-inner * {
+  color: #ffffff;
+}
+.rank-progress-label,
+.rank-events-title,
+.rank-event-item,
+.rank-event-desc,
+.rank-disabled-notice { color: #ffffff !important; }
 
-.rank-silver .rank-name  { color: #e0e0e8; text-shadow: 0 0 20px rgba(192,192,192,0.4); }
-.rank-silver .rank-title { color: #b0b0c0; }
-.rank-silver .rank-badge-icon { color: #c0c0c8; }
-.rank-silver .rank-pts-display { color: #c8c8d4; }
+/* Rank colors — !important ensures text stays visible in light mode (rank cards have forced-dark backgrounds) */
+.rank-bronze .rank-name  { color: #e8a060 !important; text-shadow: 0 0 20px rgba(205,127,50,0.5) !important; }
+.rank-bronze .rank-title { color: #cd7f32 !important; }
+.rank-bronze .rank-badge-icon { color: #cd7f32 !important; }
+.rank-bronze .rank-pts-display { color: #d4955a !important; }
 
-.rank-gold .rank-name  { color: #ffe066; text-shadow: 0 0 25px rgba(255,215,0,0.6); }
-.rank-gold .rank-title { color: #ffc200; }
-.rank-gold .rank-badge-icon { color: #ffd700; }
-.rank-gold .rank-pts-display { color: #ffc840; }
+.rank-silver .rank-name  { color: #e0e0e8 !important; text-shadow: 0 0 20px rgba(192,192,192,0.4) !important; }
+.rank-silver .rank-title { color: #b0b0c0 !important; }
+.rank-silver .rank-badge-icon { color: #c0c0c8 !important; }
+.rank-silver .rank-pts-display { color: #c8c8d4 !important; }
 
-.rank-platinum .rank-name  { color: #e8eeff; text-shadow: 0 0 22px rgba(229,228,226,0.5); }
-.rank-platinum .rank-title { color: #b0c4de; }
-.rank-platinum .rank-badge-icon { color: #d8e0f0; }
-.rank-platinum .rank-pts-display { color: #c0d0e8; }
+.rank-gold .rank-name  { color: #ffe066 !important; text-shadow: 0 0 25px rgba(255,215,0,0.6) !important; }
+.rank-gold .rank-title { color: #ffc200 !important; }
+.rank-gold .rank-badge-icon { color: #ffd700 !important; }
+.rank-gold .rank-pts-display { color: #ffc840 !important; }
 
-.rank-diamond .rank-name  { color: #b9f2ff; text-shadow: 0 0 28px rgba(185,242,255,0.7); }
-.rank-diamond .rank-title { color: #7de8ff; }
-.rank-diamond .rank-badge-icon { color: #b9f2ff; }
-.rank-diamond .rank-pts-display { color: #a0e8ff; }
+.rank-platinum .rank-name  { color: #e8eeff !important; text-shadow: 0 0 22px rgba(229,228,226,0.5) !important; }
+.rank-platinum .rank-title { color: #b0c4de !important; }
+.rank-platinum .rank-badge-icon { color: #d8e0f0 !important; }
+.rank-platinum .rank-pts-display { color: #c0d0e8 !important; }
 
-.rank-emerald .rank-name  { color: #7ff0a0; text-shadow: 0 0 28px rgba(80,200,120,0.7); }
-.rank-emerald .rank-title { color: #50c878; }
-.rank-emerald .rank-badge-icon { color: #50c878; }
-.rank-emerald .rank-pts-display { color: #60d888; }
+.rank-diamond .rank-name  { color: #b9f2ff !important; text-shadow: 0 0 28px rgba(185,242,255,0.7) !important; }
+.rank-diamond .rank-title { color: #7de8ff !important; }
+.rank-diamond .rank-badge-icon { color: #b9f2ff !important; }
+.rank-diamond .rank-pts-display { color: #a0e8ff !important; }
 
-.rank-insanium .rank-name  { color: #ff88ff; text-shadow: 0 0 30px rgba(255,0,255,0.7), 0 0 60px rgba(0,255,255,0.4); animation: insaniumTextGlow 2s ease-in-out infinite; }
-.rank-insanium .rank-title { color: #cc00ff; }
-.rank-insanium .rank-badge-icon { color: #ff00ff; filter: drop-shadow(0 0 20px #ff00ff) drop-shadow(0 0 40px #00ffff); }
-.rank-insanium .rank-pts-display { color: #ff44ff; }
+.rank-emerald .rank-name  { color: #7ff0a0 !important; text-shadow: 0 0 28px rgba(80,200,120,0.7) !important; }
+.rank-emerald .rank-title { color: #50c878 !important; }
+.rank-emerald .rank-badge-icon { color: #50c878 !important; }
+.rank-emerald .rank-pts-display { color: #60d888 !important; }
+
+.rank-insanium .rank-name  { color: #ff88ff !important; text-shadow: 0 0 30px rgba(255,0,255,0.7), 0 0 60px rgba(0,255,255,0.4) !important; animation: insaniumTextGlow 2s ease-in-out infinite; }
+.rank-insanium .rank-title { color: #cc00ff !important; }
+.rank-insanium .rank-badge-icon { color: #ff00ff !important; filter: drop-shadow(0 0 20px #ff00ff) drop-shadow(0 0 40px #00ffff); }
+.rank-insanium .rank-pts-display { color: #ff44ff !important; }
 @keyframes insaniumTextGlow {
   0%,100% { text-shadow: 0 0 30px rgba(255,0,255,0.7), 0 0 60px rgba(0,255,255,0.4); color: #ff88ff; }
   33%      { text-shadow: 0 0 30px rgba(0,255,255,0.7), 0 0 60px rgba(255,255,0,0.4); color: #88ffff; }
@@ -4030,6 +4041,43 @@ body.light-mode .tswatch.active {
   font-size: 12px;
   letter-spacing: 1px;
 }
+
+/* ── RANK EFFICIENCY PANEL — keep pts counter white in light mode */
+body.light-mode .rank-efficiency-panel .efficiency-value,
+body.light-mode .rank-efficiency-panel .efficiency-label,
+body.light-mode .rank-efficiency-panel .efficiency-desc { color: #ffffff !important; }
+
+/* ── RANK CARD — light-mode white text enforcement (dark card bg in all themes) */
+body.light-mode .rank-card-inner,
+body.light-mode .rank-card-inner * { color: #ffffff; }
+body.light-mode .rank-progress-label,
+body.light-mode .rank-events-title,
+body.light-mode .rank-event-item,
+body.light-mode .rank-event-desc,
+body.light-mode .rank-disabled-notice { color: #ffffff !important; }
+/* Re-apply rank-specific name/title/pts colors lost above */
+body.light-mode .rank-bronze .rank-name  { color: #e8a060 !important; }
+body.light-mode .rank-bronze .rank-title { color: #cd7f32 !important; }
+body.light-mode .rank-bronze .rank-pts-display { color: #d4955a !important; }
+body.light-mode .rank-silver .rank-name  { color: #e0e0e8 !important; }
+body.light-mode .rank-silver .rank-title { color: #b0b0c0 !important; }
+body.light-mode .rank-silver .rank-pts-display { color: #c8c8d4 !important; }
+body.light-mode .rank-gold .rank-name  { color: #ffe066 !important; }
+body.light-mode .rank-gold .rank-title { color: #ffc200 !important; }
+body.light-mode .rank-gold .rank-pts-display { color: #ffc840 !important; }
+body.light-mode .rank-platinum .rank-name  { color: #e8eeff !important; }
+body.light-mode .rank-platinum .rank-title { color: #b0c4de !important; }
+body.light-mode .rank-platinum .rank-pts-display { color: #c0d0e8 !important; }
+body.light-mode .rank-diamond .rank-name  { color: #b9f2ff !important; }
+body.light-mode .rank-diamond .rank-title { color: #7de8ff !important; }
+body.light-mode .rank-diamond .rank-pts-display { color: #a0e8ff !important; }
+body.light-mode .rank-emerald .rank-name  { color: #7ff0a0 !important; }
+body.light-mode .rank-emerald .rank-title { color: #50c878 !important; }
+body.light-mode .rank-emerald .rank-pts-display { color: #60d888 !important; }
+body.light-mode .rank-insanium .rank-title { color: #cc00ff !important; }
+body.light-mode .rank-insanium .rank-pts-display { color: #ff44ff !important; }
+body.light-mode .rank-event-pts.pos { color: #4dd87a !important; }
+body.light-mode .rank-event-pts.neg { color: #ff5a53 !important; }
 
 /* ── PLANNER BLOCK TRASH ── */
 .block-trash-btn {
