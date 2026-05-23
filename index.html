@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <title>Focus — Time & Work Mastery</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23e8a840'/><text x='16' y='23' text-anchor='middle' font-family='Georgia,serif' font-size='20' font-weight='700' fill='%23000'>F</text></svg>" />
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -793,6 +794,68 @@
   </div>
 
   
+  <!-- Edit Task Modal -->
+  <div class="modal-overlay" id="editTaskModal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span>Edit Task</span>
+        <button class="modal-close" id="editTaskModalClose">✕</button>
+      </div>
+      <input type="hidden" id="editTaskModalId" />
+      <div style="padding:16px 20px;display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:6px">TASK NAME</div>
+          <input type="text" id="editTaskName" class="task-text-input" style="width:100%" placeholder="Task name..." />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:6px">CATEGORY</div>
+            <select id="editTaskCategory" class="task-select" style="width:100%">
+              <option value="work">💼 Work</option>
+              <option value="study">📚 Study</option>
+              <option value="personal">🌱 Personal</option>
+              <option value="health">💪 Health</option>
+              <option value="creative">🎨 Creative</option>
+              <option value="finance">💰 Finance</option>
+              <option value="social">👥 Social</option>
+              <option value="errands">🛒 Errands</option>
+              <option value="reading">📖 Reading</option>
+              <option value="project">🚀 Project</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:6px">PRIORITY</div>
+            <select id="editTaskPriority" class="task-select" style="width:100%">
+              <option value="critical">🔴 Critical</option>
+              <option value="high">🟠 High</option>
+              <option value="medium">🟡 Medium</option>
+              <option value="low">🟢 Low</option>
+              <option value="someday">⚪ Someday</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:6px">STATUS</div>
+            <select id="editTaskStatus" class="task-select" style="width:100%">
+              <option value="not-started">○ Not Started</option>
+              <option value="working">◑ Working On It</option>
+              <option value="stuck">⚠ Stuck</option>
+              <option value="done">✓ Done</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:1px;margin-bottom:6px">DUE DATE</div>
+            <input type="date" id="editTaskDue" class="task-select" style="width:100%" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="add-task-btn" id="editTaskSave">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Tasks Trash Modal -->
   <div class="modal-overlay trash-modal" id="tasksTrashModal" style="display:none">
     <div class="modal-box trash-modal-box">
