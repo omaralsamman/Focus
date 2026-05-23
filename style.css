@@ -1084,7 +1084,7 @@ body.light-mode input[type="date"].task-select { color-scheme:light; }
 .task-sort-btn.active { background:var(--accent); color:#fff; font-weight:600; }
 
 /* Task list & grid */
-.task-list-container { overflow-x:auto; }
+.task-list-container { overflow-x:scroll; scrollbar-gutter:stable; }
 .task-list { list-style:none; display:flex; flex-direction:column; gap:0; min-width:700px; }
 .task-empty-state { display:flex; flex-direction:column; align-items:center; gap:12px; padding:56px 20px; color:var(--text-muted); font-family:var(--font-display); font-size:20px; text-align:center; }
 .task-empty-state p { font-size:15px; }
@@ -1125,7 +1125,7 @@ body.light-mode input[type="date"].task-select { color-scheme:light; }
   border-radius:var(--radius); padding:0;
   margin-bottom:5px;
   align-items:stretch;
-  transition:all 0.18s; animation:taskSlideIn 0.3s ease; cursor:default;
+  transition:border-color 0.18s, background-color 0.18s; animation:taskSlideIn 0.3s ease; cursor:default;
   overflow:hidden;
 }
 .task-item.task-grid-row.has-custom-cols { grid-template-columns: 28px 1fr 140px 160px 150px var(--custom-col-widths,) 32px; }
@@ -1203,14 +1203,17 @@ body.light-mode .task-due-input { color-scheme:light; }
 .task-custom-input::placeholder { color:var(--text-muted); }
 
 /* Delete button */
+.task-row-actions { display:flex; align-items:center; justify-content:center; gap:2px; }
+.task-edit { background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:15px; padding:6px 5px; transition:color 0.2s; opacity:0; display:flex; align-items:center; justify-content:center; }
+.task-item:hover .task-edit { opacity:1; }
+.task-edit:hover { color:var(--accent); }
 .task-delete { background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:15px; padding:8px 10px; transition:color 0.2s; opacity:0; display:flex; align-items:center; justify-content:center; }
 .task-item:hover .task-delete { opacity:1; }
 .task-delete:hover { color:var(--red); }
 
 /* Add column button */
-.add-column-wrap { display:flex; justify-content:flex-start; margin-top:8px; }
-.add-column-btn { padding:7px 16px; border:1px dashed var(--border); border-radius:var(--radius); background:transparent; color:var(--text-muted); font-family:var(--font-display); font-size:13px; cursor:pointer; transition:all 0.2s; }
-.add-column-btn:hover { border-color:var(--accent); color:var(--accent); background:var(--accent-dim); }
+.add-column-wrap { display:none !important; }
+.add-column-btn { display:none !important; }
 
 /* Tags */
 .task-tags { display:flex; gap:5px; flex-wrap:wrap; }
@@ -2254,6 +2257,11 @@ body.light-mode .note-color-pill.active { border-color:rgba(0,0,0,0.70); box-sha
     padding: 1px 2px;
   }
   .task-delete {
+    opacity: 0.8;
+    font-size: 11px;
+    padding: 2px 3px;
+  }
+  .task-edit {
     opacity: 0.8;
     font-size: 11px;
     padding: 2px 3px;
