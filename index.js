@@ -59,7 +59,7 @@ const State = {
       if(s.noteTrash) this.noteTrash=s.noteTrash;
       if(s.theme) this.theme=s.theme;
       if(s.lightMode!==undefined) this.lightMode=s.lightMode;
-      if(s.customColumns) this.customColumns=s.customColumns;
+      if(s.customColumns) this.customColumns=[];
       if(s.hasEverRun !== undefined) this.hasEverRun = s.hasEverRun;
       if(s.rankSystemEnabled !== undefined) this.rankSystemEnabled = s.rankSystemEnabled;
       if(s.rank) this.rank = s.rank;
@@ -653,25 +653,14 @@ function renderTaskList(){
     return;
   }
 
-  const customCols = State.customColumns || [];
-  const customHeaderCells = customCols.map(col=>
-    `<span class="tgh-custom" data-col-id="${col.id}">
-      ${col.name}
-      <button class="col-remove-btn" onclick="removeCustomColumn('${col.id}')" title="Remove column">✕</button>
-    </span>`
-  ).join('');
+  const gridStyle = `style="grid-template-columns: 28px 1fr 140px 160px 150px 60px"`;
 
-  const customColsStyle = customCols.length
-    ? `style="grid-template-columns: 28px 1fr 140px 160px 150px ${customCols.map(()=>'140px').join(' ')} 32px"`
-    : `style="grid-template-columns: 28px 1fr 140px 160px 150px 32px"`;
-
-  list.innerHTML=`<li class="task-grid-header" ${customColsStyle}>
+  list.innerHTML=`<li class="task-grid-header" ${gridStyle}>
     <span class="tgh-drag"></span>
     <span class="tgh-name">Task</span>
     <span class="tgh-priority">Priority</span>
     <span class="tgh-status">Status</span>
     <span class="tgh-due">Due Date</span>
-    ${customHeaderCells}
     <span class="tgh-actions"></span>
   </li>`
   +items.map(t=>{
@@ -682,18 +671,7 @@ function renderTaskList(){
     const dueOverdue=t.due&&!isDone&&t.due<todayStr();
     const isOverdue=t.due&&!isDone&&t.due<todayStr();
 
-    const customCells = customCols.map(col=>{
-      const val = (t.customData && t.customData[col.id]) || '';
-      return `<div class="task-custom-cell">
-        <input class="task-custom-input" type="text" value="${val.replace(/"/g,'&quot;')}"
-          placeholder="—"
-          onchange="updateCustomCell(${t.id},'${col.id}',this.value)"
-          onclick="this.focus()"
-        />
-      </div>`;
-    }).join('');
-
-    return `<li class="task-item task-grid-row${isDone?' done':''}${isOverdue?' overdue-task':''}" data-id="${t.id}" draggable="true" ${customColsStyle}>
+    return `<li class="task-item task-grid-row${isDone?' done':''}${isOverdue?' overdue-task':''}" data-id="${t.id}" draggable="true" ${gridStyle}>
       <div class="task-drag-handle" title="Drag to reorder">⠿</div>
       <div class="task-name-cell">
         <span class="task-name" data-full="${t.name.replace(/"/g,'&quot;')}">${t.name}</span>
@@ -727,8 +705,10 @@ function renderTaskList(){
         />
         ${t.due?`<span class="task-due-label${dueOverdue?' overdue-label':''}">${formatDueDate(t.due)}</span>`:'<span class="task-due-label muted-label">Set date</span>'}
       </div>
-      ${customCells}
-      <button class="task-delete" onclick="deleteTask(${t.id})">✕</button>
+      <div class="task-row-actions">
+        <button class="task-edit" onclick="openEditTaskModal(${t.id})" title="Edit task">✎</button>
+        <button class="task-delete" onclick="deleteTask(${t.id})" title="Delete task">✕</button>
+      </div>
     </li>`;
   }).join('');
 
@@ -914,7 +894,7 @@ const PRIORITY_META={
   someday:{label:'Someday',cls:'pri-someday'},
 };
 function formatDueDate(str){
-  const d=new Date(str+'T12:00:00');
+  const d=new Date(str+'T00:00:00');
   const today=new Date(); today.setHours(0,0,0,0);
   const diff=Math.round((d-today)/(1000*60*60*24));
   if(diff===0)return'Today';if(diff===1)return'Tomorrow';if(diff===-1)return'Yesterday';
@@ -1019,6 +999,46 @@ function deleteTask(id){
   if(document.getElementById('dashboard').classList.contains('active'))updateDashboard();
   toast('Task moved to trash 🗑','normal');
 }
+// ── EDIT TASK MODAL ──
+function openEditTaskModal(id){
+  const t=State.tasks.find(t=>t.id===id); if(!t)return;
+  const modal=$('editTaskModal'); if(!modal)return;
+  $('editTaskModalId').value=id;
+  $('editTaskName').value=t.name||'';
+  $('editTaskCategory').value=t.category||'work';
+  $('editTaskPriority').value=t.priority||'medium';
+  $('editTaskStatus').value=t.status||(t.done?'done':'not-started');
+  $('editTaskDue').value=t.due||'';
+  modal.style.display='flex';
+  setTimeout(()=>$('editTaskName').focus(),50);
+}
+function saveEditTask(){
+  const id=parseInt($('editTaskModalId').value);
+  const t=State.tasks.find(t=>t.id===id); if(!t)return;
+  const name=$('editTaskName').value.trim();
+  if(!name){toast('Task name cannot be empty.','warn');return;}
+  t.name=name;
+  t.category=$('editTaskCategory').value;
+  t.priority=$('editTaskPriority').value;
+  t.status=$('editTaskStatus').value;
+  t.done=t.status==='done';
+  t.due=$('editTaskDue').value;
+  if(t.done) recordTaskOutcome(t);
+  State.save(); renderTaskList();
+  $('editTaskModal').style.display='none';
+  toast('Task updated \u2713','success');
+  if(document.getElementById('dashboard').classList.contains('active'))updateDashboard();
+}
+document.addEventListener('click',e=>{
+  if(e.target.id==='editTaskModal') $('editTaskModal').style.display='none';
+  if(e.target.id==='editTaskModalClose') $('editTaskModal').style.display='none';
+  if(e.target.id==='editTaskSave') saveEditTask();
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&$('editTaskModal')&&$('editTaskModal').style.display!=='none')
+    $('editTaskModal').style.display='none';
+});
+
 $('addTaskBtn').addEventListener('click',addTask);
 $('taskInput').addEventListener('keydown',e=>{if(e.key==='Enter')addTask();});
 $$('.filter-btn').forEach(btn=>btn.addEventListener('click',()=>{$$('.filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');taskFilter=btn.dataset.filter;renderTaskList();}));
