@@ -14,7 +14,7 @@
 
   <!-- ── Mobile Top Bar ── -->
   <div class="mobile-topbar" id="mobileTopbar">
-    <div class="mobile-logo">
+    <div class="mobile-logo" id="mobileLogoBtn" onclick="showSection('dashboard')" style="cursor:pointer" title="Dashboard">
       <span class="mobile-logo-mark">F</span>
       <span class="mobile-logo-text">FOCUS</span>
     </div>
@@ -41,17 +41,17 @@
 
   <!-- ── Desktop Sidebar ── -->
   <nav class="sidebar" id="desktopSidebar">
-    <div class="logo">
+    <div class="logo" id="logoBtn" onclick="showSection('dashboard')" title="Dashboard" style="cursor:pointer">
       <span class="logo-mark">F</span>
       <span class="logo-text">FOCUS</span>
-      <label for="darkmode-switch" class="focus-toggle-label desktop-focus-toggle" title="Toggle dark/light mode" aria-label="Toggle dark/light mode">
+      <label for="darkmode-switch" class="focus-toggle-label desktop-focus-toggle" title="Toggle dark/light mode" aria-label="Toggle dark/light mode" onclick="event.stopPropagation()">
         <i class="fas fa-moon"></i>
         <i class="fas fa-sun"></i>
         <span class="focus-toggle-ball"></span>
       </label>
     </div>
     <ul class="nav-links">
-      <li class="nav-item active" data-section="dashboard"><span class="nav-icon">◈</span><span class="nav-label">Dashboard</span></li>
+      <li class="nav-item" data-section="goals"><span class="nav-icon">◭</span><span class="nav-label">Goals</span></li>
       <li class="nav-item" data-section="pomodoro"><span class="nav-icon">◎</span><span class="nav-label">Timer</span></li>
       <li class="nav-item" data-section="tasks"><span class="nav-icon">◇</span><span class="nav-label">Tasks</span></li>
       <li class="nav-item" data-section="planner"><span class="nav-icon">▦</span><span class="nav-label">Planner</span></li>
@@ -68,7 +68,7 @@
 
   <!-- ── Mobile Bottom Nav ── -->
   <nav class="mobile-nav" id="mobileNav">
-    <div class="mobile-nav-item active" data-section="dashboard"><span class="mnav-icon">◈</span><span class="mnav-label">Dashboard</span></div>
+    <div class="mobile-nav-item" data-section="goals"><span class="mnav-icon">◭</span><span class="mnav-label">Goals</span></div>
     <div class="mobile-nav-item" data-section="pomodoro"><span class="mnav-icon">◎</span><span class="mnav-label">Timer</span></div>
     <div class="mobile-nav-item" data-section="tasks"><span class="mnav-icon">◇</span><span class="mnav-label">Tasks</span></div>
     <div class="mobile-nav-item" data-section="planner"><span class="mnav-icon">▦</span><span class="mnav-label">Planner</span></div>
@@ -114,6 +114,180 @@
         <div class="card monthly-card" data-delay="8"><div class="mini-card-label">This Month</div><div class="month-grid" id="monthGrid"></div></div>
       </div>
     </section>
+
+    <!-- ══ GOALS ══ -->
+    <section class="section" id="goals">
+
+      <!-- Hero -->
+      <header class="goals-hero">
+        <div>
+          <p class="goals-hero-eyebrow">Habits &amp; Rituals</p>
+          <h1 class="goals-hero-title">Build the life <em>you keep</em>.</h1>
+          <p class="goals-hero-sub">
+            <span id="goalsHeroDate">—</span>
+            <span class="sep">•</span>
+            <span id="goalsHeroCount">0 active habits</span>
+          </p>
+        </div>
+        <div class="goals-ring-wrap">
+          <div class="goals-ring" id="goalsRing">
+            <svg viewBox="0 0 120 120" aria-hidden="true">
+              <circle class="goals-ring-track" cx="60" cy="60" r="52" fill="none" stroke-width="8"/>
+              <circle class="goals-ring-fill"  cx="60" cy="60" r="52" fill="none" stroke-width="8"
+                      stroke-dasharray="326.7" stroke-dashoffset="326.7" id="goalsRingFill"/>
+            </svg>
+            <div class="goals-ring-center">
+              <div class="goals-ring-num"><span id="goalsRingDone">0</span><em id="goalsRingTotal">/0</em></div>
+              <div class="goals-ring-label">Today</div>
+            </div>
+          </div>
+          <button class="goals-new-btn" id="addGoalBtn" type="button">
+            <span class="plus">+</span><span>New Habit</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- View tabs -->
+      <div class="goals-tabs-row">
+        <div class="goals-tabs" id="goalsTabs" role="tablist">
+          <button class="goals-tab active" data-view="cards" type="button">Today</button>
+          <button class="goals-tab"        data-view="week"  type="button">Week</button>
+          <button class="goals-tab"        data-view="month" type="button">Month</button>
+        </div>
+        <button class="goals-trash-btn" id="goalsTrashBtn" type="button">
+          🗑 Trash <span class="goals-trash-count" id="goalsTrashCount" style="display:none">0</span>
+        </button>
+      </div>
+
+      <!-- Cards view -->
+      <div class="goals-grid" id="goalsGrid"></div>
+
+      <!-- Empty -->
+      <div class="goals-empty" id="goalsEmpty" style="display:none">
+        <div class="goals-empty-mark">◯</div>
+        <h3>Your rituals begin here.</h3>
+        <p>Track one habit at a time. Small, kept promises compound into who you become.</p>
+        <button class="goals-new-btn" type="button" onclick="document.getElementById('addGoalBtn').click()">
+          <span class="plus">+</span><span>Create your first habit</span>
+        </button>
+      </div>
+
+      <!-- Week / Month panes -->
+      <div class="goals-overview" id="goalsOverview" style="display:none">
+        <div class="goals-pane" id="goalsWeekPane" style="display:none">
+          <div class="goals-pane-head">
+            <div class="goals-pane-title">This week</div>
+            <div class="goals-pane-meta" id="goalsWeekRange">—</div>
+          </div>
+          <div class="gm-row head-row">
+            <div></div>
+            <div class="gm-col-labels week">
+              <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span>
+              <span>Fri</span><span>Sat</span><span>Sun</span>
+            </div>
+          </div>
+          <div class="gm-matrix" id="goalsWeekMatrix"></div>
+          <div class="gm-legend">
+            <span class="gm-legend-item"><span class="gm-legend-swatch done"></span>Done</span>
+            <span class="gm-legend-item"><span class="gm-legend-swatch rest"></span>Rest</span>
+            <span class="gm-legend-item"><span class="gm-legend-swatch miss"></span>Missed</span>
+          </div>
+        </div>
+
+        <div class="goals-pane" id="goalsMonthPane" style="display:none">
+          <div class="goals-pane-head">
+            <div class="goals-pane-title">This month</div>
+            <div class="goals-pane-meta" id="goalsMonthLabel">—</div>
+          </div>
+          <div class="gm-row head-row">
+            <div></div>
+            <div class="gm-col-labels month" id="goalsMonthHead"></div>
+          </div>
+          <div class="gm-matrix" id="goalsMonthMatrix"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ GOAL DETAIL ════════════════════════════════════════════ -->
+
+    <section class="section" id="goal-detail">
+      <div class="gd-topbar">
+        <button class="gd-back" type="button" onclick="showSection('goals')">
+          <span>←</span><span>All habits</span>
+        </button>
+        <div class="gd-actions">
+          <button class="gd-icon-btn" id="gdEditBtn" title="Edit habit">✎</button>
+          <button class="gd-icon-btn danger" id="gdDeleteBtn" title="Delete habit">🗑</button>
+        </div>
+      </div>
+
+      <div class="gd-hero" id="gdHero">
+        <div class="gd-hero-icon" id="gdIcon">🎯</div>
+        <div>
+          <p class="gd-hero-cat" id="gdCategory">CATEGORY</p>
+          <h1 class="gd-hero-name" id="gdName">Goal name</h1>
+          <p class="gd-hero-desc" id="gdDesc"></p>
+        </div>
+      </div>
+
+      <div class="gd-stats">
+        <div class="gd-stat"><div class="gd-stat-num is-accent" id="gdCurrent">0</div><div class="gd-stat-label">Current Streak</div></div>
+        <div class="gd-stat"><div class="gd-stat-num"          id="gdLongest">0</div><div class="gd-stat-label">Longest</div></div>
+        <div class="gd-stat"><div class="gd-stat-num is-green" id="gdDone">0</div><div class="gd-stat-label">Days Done</div></div>
+        <div class="gd-stat"><div class="gd-stat-num is-blue"  id="gdRest">0</div><div class="gd-stat-label">Rest Days</div></div>
+        <div class="gd-stat"><div class="gd-stat-num is-red"   id="gdMiss">0</div><div class="gd-stat-label">Missed</div></div>
+      </div>
+
+      <div class="gd-row">
+        <div class="gd-pane">
+          <div class="gd-pane-head">
+            <div class="gd-pane-title">Log today</div>
+            <div class="gd-pane-meta" id="gdTodayDate">—</div>
+          </div>
+          <div class="gd-log-buttons">
+            <button class="gd-log-btn done" id="gdBtnDone" type="button">
+              <span class="glyph">✓</span><span>Done — kept the promise</span>
+            </button>
+            <button class="gd-log-btn rest" id="gdBtnRest" type="button">
+              <span class="glyph">~</span><span>Rest — intentional pause</span>
+            </button>
+            <button class="gd-log-btn miss" id="gdBtnMiss" type="button">
+              <span class="glyph">×</span><span>Missed — log honestly</span>
+            </button>
+          </div>
+          <input type="text" id="gdNoteInput" class="gd-note"
+                 placeholder="A note for today (optional)…" maxlength="140" />
+        </div>
+
+        <div class="gd-pane">
+          <div class="gd-pane-head">
+            <div class="gd-pane-title">This week</div>
+            <div class="gd-pane-meta" id="gdWeekRange">—</div>
+          </div>
+          <div class="gd-week" id="gdWeek"></div>
+        </div>
+      </div>
+
+      <div class="gd-bottom-row">
+        <div class="gd-history-card">
+          <div class="gd-pane-head">
+            <div class="gd-pane-title">This month</div>
+            <div class="gd-pane-meta" id="gdMonthLabel">—</div>
+          </div>
+          <div class="gd-month" id="gdMonth"></div>
+        </div>
+
+        <div class="gd-history-card">
+          <div class="gd-pane-head">
+            <div class="gd-pane-title">Recent entries</div>
+            <div class="gd-pane-meta" id="gdHistoryCount">—</div>
+          </div>
+          <div class="gd-history-list" id="gdHistory"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ ADD GOAL MODAL ════════════════════════════════════════ -->
 
     <!-- ══ TIMER ══ -->
     <section class="section" id="pomodoro">
@@ -631,7 +805,7 @@
             <div class="settings-row">
               <div class="settings-row-info">
                 <span class="settings-row-label">FOCUS</span>
-                <span class="settings-row-desc">Version 0.9 — Your personal time & work mastery tool. All data is stored locally in your browser.</span>
+                <span class="settings-row-desc">Version 0.95 — Your personal time & work mastery tool. All data is stored locally in your browser.</span>
               </div>
             </div>
           </div>
@@ -900,6 +1074,96 @@
       </div>
       <div class="trash-modal-body">
         <ul class="trash-list" id="blockTrashList"><li class="trash-empty-state">Trash is empty.</li></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Goals Trash Modal -->
+  <div class="modal-overlay trash-modal" id="goalsTrashModal" style="display:none">
+    <div class="modal-box trash-modal-box">
+      <div class="modal-header">
+        <span>🗑 Deleted Habits</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="settings-danger-btn" id="emptyGoalsTrashBtn" style="font-size:11px;padding:5px 10px">Empty Trash</button>
+          <button class="modal-close" id="goalsTrashModalClose">✕</button>
+        </div>
+      </div>
+      <div class="trash-modal-body">
+        <ul class="trash-list" id="goalsTrashList"><li class="trash-empty-state">Trash is empty.</li></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Goal Modal -->
+  <div class="modal-overlay" id="editGoalModal" style="display:none">
+    <div class="modal-box goal-modal-box">
+      <div class="modal-header">
+        <span>Edit Habit</span>
+        <button class="modal-close" id="editGoalModalClose" type="button">✕</button>
+      </div>
+      <div class="goal-modal-body">
+        <div class="gmod-group">
+          <div class="gmod-label">Name</div>
+          <input type="text" id="editGoalNameInput" class="gmod-name"
+                 placeholder="e.g. Morning run, Read 30 min…" maxlength="40" />
+        </div>
+        <div class="gmod-group">
+          <div class="gmod-label">Icon</div>
+          <div class="gmod-icons" id="editGoalIconPicker"></div>
+        </div>
+        <div class="gmod-row">
+          <div class="gmod-group">
+            <div class="gmod-label">Category</div>
+            <div class="gmod-cats" id="editGoalCatPicker"></div>
+          </div>
+          <div class="gmod-group">
+            <div class="gmod-label">Color</div>
+            <div class="gmod-colors" id="editGoalColorPicker"></div>
+          </div>
+        </div>
+        <div class="gmod-group">
+          <div class="gmod-label">Intention (optional)</div>
+          <input type="text" id="editGoalDescInput" class="gmod-desc"
+                 placeholder="What does success look like?" maxlength="80" />
+        </div>
+        <button class="gmod-save" id="saveEditGoalBtn" type="button">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Goal Modal -->
+  <div class="modal-overlay" id="addGoalModal" style="display:none">
+    <div class="modal-box goal-modal-box">
+      <div class="modal-header">
+        <span>New Habit</span>
+        <button class="modal-close" id="addGoalModalClose" type="button">✕</button>
+      </div>
+      <div class="goal-modal-body">
+        <div class="gmod-group">
+          <div class="gmod-label">Name</div>
+          <input type="text" id="goalNameInput" class="gmod-name"
+                 placeholder="e.g. Morning run, Read 30 min…" maxlength="40" />
+        </div>
+        <div class="gmod-group">
+          <div class="gmod-label">Icon</div>
+          <div class="gmod-icons" id="goalIconPicker"></div>
+        </div>
+        <div class="gmod-row">
+          <div class="gmod-group">
+            <div class="gmod-label">Category</div>
+            <div class="gmod-cats" id="goalCatPicker"></div>
+          </div>
+          <div class="gmod-group">
+            <div class="gmod-label">Color</div>
+            <div class="gmod-colors" id="goalColorPicker"></div>
+          </div>
+        </div>
+        <div class="gmod-group">
+          <div class="gmod-label">Intention (optional)</div>
+          <input type="text" id="goalDescInput" class="gmod-desc"
+                 placeholder="What does success look like?" maxlength="80" />
+        </div>
+        <button class="gmod-save" id="saveGoalBtn" type="button">Create Habit</button>
       </div>
     </div>
   </div>
