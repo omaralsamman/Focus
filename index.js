@@ -171,6 +171,8 @@ function showSection(name){
   if(name==='planner') renderPlanner();
   if(name==='tasks') renderTaskList();
   if(name==='notes') renderNotesList();
+  if(name==='goals') { if(typeof Goals !== 'undefined') Goals.render(); }
+  if(name==='goal-detail') { /* rendered by Goals.renderDetail */ }
 }
 $$('.nav-item').forEach(i=>i.addEventListener('click',()=>showSection(i.dataset.section)));
 $$('.mobile-nav-item').forEach(i=>i.addEventListener('click',()=>showSection(i.dataset.section)));
@@ -199,7 +201,7 @@ const quotes=[
   {text:"It's not that I'm so smart, it's just that I stay with problems longer.",author:"Albert Einstein"},
 ];
 let qi=Math.floor(Math.random()*quotes.length);
-function showQuote(){ const q=quotes[qi%quotes.length]; $('quoteText').textContent=`"${q.text}"`; $('quoteAuthor').textContent=`— ${q.author}`; qi++; }
+function showQuote(){ const q=quotes[qi%quotes.length]; const qt=$('quoteText'),qa=$('quoteAuthor'); if(qt) qt.textContent=`"${q.text}"`; if(qa) qa.textContent=`— ${q.author}`; qi++; }
 showQuote();
 
 const tips=[
@@ -211,27 +213,31 @@ const tips=[
   {title:"Energy Management",desc:"Align tasks with your energy — creative work in peak hours, admin and routine tasks in low-energy windows."},
 ];
 let tipIdx=0;
-function showTip(){ $('tipTitle').textContent=tips[tipIdx].title; $('tipDesc').textContent=tips[tipIdx].desc; tipIdx=(tipIdx+1)%tips.length; }
-$('nextTipBtn').addEventListener('click',showTip);
+function showTip(){ const tt=$('tipTitle'),td=$('tipDesc'); if(tt) tt.textContent=tips[tipIdx].title; if(td) td.textContent=tips[tipIdx].desc; tipIdx=(tipIdx+1)%tips.length; }
+$('nextTipBtn')?.addEventListener('click',showTip);
 
 // ── DASHBOARD ──
 function updateDashboard(){
   const today=todayStr(), mins=State.stats.focusMinutesByDay[today]||0;
-  $('todayFocusTime').textContent=`${Math.floor(mins/60)}h ${mins%60}m`;
-  $('focusFill').style.width=Math.min(100,(mins/240)*100)+'%';
+  const _s=(id,v)=>{ const el=$(id); if(el) el.textContent=v; };
+  const _w=(id,v)=>{ const el=$(id); if(el) el.style.width=v; };
+  _s('todayFocusTime',`${Math.floor(mins/60)}h ${mins%60}m`);
+  _w('focusFill',Math.min(100,(mins/240)*100)+'%');
   const total=State.tasks.length, done=State.tasks.filter(t=>t.done).length;
-  $('tasksCompleted').textContent=`${done} / ${total}`;
-  $('taskFill').style.width=total?(done/total*100)+'%':'0%';
-  $('streakDays').textContent=State.stats.currentStreak;
-  $('streakFill').style.width=Math.min(100,State.stats.currentStreak*10)+'%';
-  $('pomodoroCount').textContent=State.stats.totalPomodoros;
-  $('pomodoroFill').style.width=Math.min(100,State.stats.totalPomodoros*8)+'%';
-  $('dashTimerDisplay').textContent=fmt(State.pomo.secondsLeft);
+  _s('tasksCompleted',`${done} / ${total}`);
+  _w('taskFill',total?(done/total*100)+'%':'0%');
+  _s('streakDays',State.stats.currentStreak);
+  _w('streakFill',Math.min(100,State.stats.currentStreak*10)+'%');
+  _s('pomodoroCount',State.stats.totalPomodoros);
+  _w('pomodoroFill',Math.min(100,State.stats.totalPomodoros*8)+'%');
+  _s('dashTimerDisplay',fmt(State.pomo.secondsLeft));
   const list=$('dashTaskList');
-  const pending=State.tasks.filter(t=>!t.done).slice(0,5);
-  list.innerHTML=pending.length
-    ?pending.map(t=>`<li class="preview-task"><span style="color:var(--text-muted)">◇</span> ${t.name}</li>`).join('')
-    :'<li class="preview-task empty-state">No tasks yet — add some in Tasks ↗</li>';
+  if(list){
+    const pending=State.tasks.filter(t=>!t.done).slice(0,5);
+    list.innerHTML=pending.length
+      ?pending.map(t=>`<li class="preview-task"><span style="color:var(--text-muted)">◇</span> ${t.name}</li>`).join('')
+      :'<li class="preview-task empty-state">No tasks yet — add some in Tasks ↗</li>';
+  }
   renderWeekBars(); renderMonthGrid();
 }
 
@@ -317,7 +323,7 @@ function applyPomoModeColors(){
 }
 function updateTimerUI(){
   const d=fmt(POMO.secondsLeft);
-  $('timerDisplay').textContent=d; $('dashTimerDisplay').textContent=d;
+  $('timerDisplay').textContent=d; const dtd=$('dashTimerDisplay'); if(dtd) dtd.textContent=d;
   document.title=POMO.running?`${d} — FOCUS`:'FOCUS';
   const circ=2*Math.PI*130,off=circ*(1-POMO.secondsLeft/POMO.totalSeconds);
   $('ringProgress').style.strokeDashoffset=circ-off;
@@ -360,12 +366,12 @@ function updateStreak(){
   State.stats.lastFocusDay=today;
   if(State.stats.currentStreak>State.stats.bestStreak)State.stats.bestStreak=State.stats.currentStreak;
 }
-$('startStopBtn').addEventListener('click',()=>{
+$('startStopBtn')?.addEventListener('click',()=>{
   if(POMO.running){clearInterval(POMO.intervalId);POMO.running=false;$('startStopBtn').textContent='▶ Start';document.title='FOCUS';}
   else{POMO.running=true;$('startStopBtn').textContent='⏸ Pause';POMO.intervalId=setInterval(tickTimer,1000);}
 });
-$('resetBtn').addEventListener('click',()=>resetTimer());
-$('skipBtn').addEventListener('click',()=>{clearInterval(POMO.intervalId);resetTimer(POMO.mode==='pomodoro'?'short':'pomodoro');});
+$('resetBtn')?.addEventListener('click',()=>resetTimer());
+$('skipBtn')?.addEventListener('click',()=>{clearInterval(POMO.intervalId);resetTimer(POMO.mode==='pomodoro'?'short':'pomodoro');});
 $$('.pomo-tab').forEach(t=>t.addEventListener('click',()=>{
   $$('.pomo-tab').forEach(x=>x.classList.remove('active')); t.classList.add('active');
   if(t.dataset.mode==='stopwatch'){
@@ -438,7 +444,7 @@ function swTick(){
   updateSwUI();
 }
 
-$('swStartStopBtn').addEventListener('click',()=>{
+$('swStartStopBtn')?.addEventListener('click',()=>{
   if(SW.running){
     // Pause — just stop the clock, no points awarded yet
     SW.elapsedMs += Date.now() - SW.startTime;
@@ -459,7 +465,7 @@ $('swStartStopBtn').addEventListener('click',()=>{
   }
 });
 
-$('swResetBtn').addEventListener('click',()=>{
+$('swResetBtn')?.addEventListener('click',()=>{
   // If the stopwatch is still running, capture the final elapsed time first
   if(SW.running){
     SW.elapsedMs += Date.now() - SW.startTime;
@@ -506,7 +512,7 @@ $('swResetBtn').addEventListener('click',()=>{
   document.title = 'FOCUS';
 });
 
-$('swLapBtn').addEventListener('click',()=>{
+$('swLapBtn')?.addEventListener('click',()=>{
   if(!SW.running && SW.elapsedMs === 0) return;
   const elapsed = SW.running ? (SW.elapsedMs + (Date.now() - SW.startTime)) : SW.elapsedMs;
   const lapTime = elapsed - SW.lastLapMs;
@@ -1039,8 +1045,8 @@ document.addEventListener('keydown',e=>{
     $('editTaskModal').style.display='none';
 });
 
-$('addTaskBtn').addEventListener('click',addTask);
-$('taskInput').addEventListener('keydown',e=>{if(e.key==='Enter')addTask();});
+$('addTaskBtn')?.addEventListener('click',addTask);
+$('taskInput')?.addEventListener('keydown',e=>{if(e.key==='Enter')addTask();});
 $$('.filter-btn').forEach(btn=>btn.addEventListener('click',()=>{$$('.filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');taskFilter=btn.dataset.filter;renderTaskList();}));
 $$('.task-sort-btn').forEach(btn=>btn.addEventListener('click',()=>{$$('.task-sort-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');taskSortMode=btn.dataset.sort;renderTaskList();}));
 const _sortToggleBtn=document.getElementById('taskSortToggle');
@@ -1083,7 +1089,7 @@ function switchPlannerView(v){
 
 $$('.pvt-btn').forEach(btn => btn.addEventListener('click', () => switchPlannerView(btn.dataset.view)));
 
-$('prevWeek').addEventListener('click',()=>{
+$('prevWeek')?.addEventListener('click',()=>{
   if(State.zoomedDay){
     // Navigate to previous day
     const d=new Date(State.zoomedDay+'T12:00:00'); d.setDate(d.getDate()-1);
@@ -1093,7 +1099,7 @@ $('prevWeek').addEventListener('click',()=>{
     if(State.plannerView==='month') showMonthView(); else showWeekView();
   }
 });
-$('nextWeek').addEventListener('click',()=>{
+$('nextWeek')?.addEventListener('click',()=>{
   if(State.zoomedDay){
     // Navigate to next day
     const d=new Date(State.zoomedDay+'T12:00:00'); d.setDate(d.getDate()+1);
@@ -1103,7 +1109,7 @@ $('nextWeek').addEventListener('click',()=>{
     if(State.plannerView==='month') showMonthView(); else showWeekView();
   }
 });
-$('zoomBackBtn').addEventListener('click',()=>{
+$('zoomBackBtn')?.addEventListener('click',()=>{
   State.zoomedDay=null;
   clearInterval(nowLineInterval); clearInterval(blockCountdownInterval);
   clearInterval(window._weekNowInterval);
@@ -1621,7 +1627,7 @@ function deleteBlock(key,id){
   toast('Block moved to trash 🗑','normal');
 }
 
-$('addBlockBtn').addEventListener('click',()=>{
+$('addBlockBtn')?.addEventListener('click',()=>{
   const title=$('blockTitle').value.trim();
   if(!title){toast('Please enter a block title.','warn');return;}
   const startVal=$('blockStartTime').value || '09:00';
@@ -1706,9 +1712,9 @@ function openEditBlockModal(key,bid){
   $('editBlockNote').value=blk.note||'';
   $('editBlockModal').style.display='flex';
 }
-$('editBlockModalClose').addEventListener('click',()=>{ $('editBlockModal').style.display='none'; _editKey=_editBid=null; });
-$('editBlockModal').addEventListener('click',e=>{ if(e.target===$('editBlockModal'))$('editBlockModal').style.display='none'; });
-$('editBlockSave').addEventListener('click',()=>{
+$('editBlockModalClose')?.addEventListener('click',()=>{ $('editBlockModal').style.display='none'; _editKey=_editBid=null; });
+$('editBlockModal')?.addEventListener('click',e=>{ if(e.target===$('editBlockModal'))$('editBlockModal').style.display='none'; });
+$('editBlockSave')?.addEventListener('click',()=>{
   if(!_editKey||!_editBid)return;
   const blk=(State.planner.blocks[_editKey]||[]).find(b=>b.id===_editBid); if(!blk)return;
   blk.title=$('editBlockTitle').value.trim()||blk.title;
@@ -1732,15 +1738,15 @@ function openBlockNoteModal(key,bid){
   $('blockNoteModal').style.display='flex';
   setTimeout(()=>$('modalNoteBody').focus(),100);
 }
-$('modalClose').addEventListener('click',()=>{ $('blockNoteModal').style.display='none'; _modalKey=_modalBid=null; });
-$('modalSave').addEventListener('click',()=>{
+$('modalClose')?.addEventListener('click',()=>{ $('blockNoteModal').style.display='none'; _modalKey=_modalBid=null; });
+$('modalSave')?.addEventListener('click',()=>{
   if(!_modalKey||!_modalBid)return;
   const blk=(State.planner.blocks[_modalKey]||[]).find(b=>b.id===_modalBid); if(!blk)return;
   blk.note=$('modalNoteBody').value;
   State.save(); renderDayGrid(_modalKey);
   $('blockNoteModal').style.display='none'; toast('Note saved!','success');
 });
-$('blockNoteModal').addEventListener('click',e=>{ if(e.target===$('blockNoteModal'))$('blockNoteModal').style.display='none'; });
+$('blockNoteModal')?.addEventListener('click',e=>{ if(e.target===$('blockNoteModal'))$('blockNoteModal').style.display='none'; });
 
 // ── STATS ──
 $$('.range-tab').forEach(t=>t.addEventListener('click',()=>{
@@ -1822,7 +1828,8 @@ function updateStats(){
     return sum+Math.round(base*(durMins/30));
   },0);
   const streakPts=Math.round(s.currentStreak*3);
-  const score=taskPts+sessionPts+blockPts+streakPts;
+  const habitPts=(()=>{ const HP={done:15,rest:3,miss:-10}; return (Goals._data||[]).reduce((sum,g)=>sum+Object.values(g.log||{}).reduce((s2,e)=>s2+(HP[e.status]||0),0),0); })();
+  const score=taskPts+sessionPts+blockPts+streakPts+Math.max(0,habitPts);
   const ringMax=500;
   const circ=2*Math.PI*80;
   const fillPct=Math.min(1,score/ringMax);
@@ -1830,7 +1837,7 @@ function updateStats(){
   $('efficiencyValue').textContent=score>0?score:'—';
   const descs={0:'Complete tasks and sessions to build your score.',50:'Good start! Keep the momentum going.',150:"Nice progress. You're building solid habits.",300:"Strong performance. Your focus is sharpening.",500:"Excellent! You're operating at a high level.",800:"Elite. You've mastered time and focus.",1200:"Legendary. Exceptional consistency and output."};
   const dk=Object.keys(descs).map(Number).filter(k=>score>=k).pop()||0;
-  const breakdown=`${taskPts} tasks · ${sessionPts} sessions · ${blockPts} blocks · ${streakPts} streak`;
+  const breakdown=`${taskPts} tasks · ${sessionPts} sessions · ${blockPts} blocks · ${streakPts} streak · ${Math.max(0,habitPts)} habits`;
   $('efficiencyDesc').innerHTML=descs[dk]+'<br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:0.5px">'+breakdown+'</span>';
 
   // Achievements with progress bars
@@ -2350,18 +2357,18 @@ document.addEventListener('DOMContentLoaded',()=>{
   updateTasksTrashBadge();
 });
 
-$('addNoteBtn').addEventListener('click',()=>{
+$('addNoteBtn')?.addEventListener('click',()=>{
   const note={id:Date.now(),title:'New Note',body:'',category:'general',color:'default',created:Date.now(),updated:Date.now()};
   State.notes.unshift(note); State.save(); openNote(note.id); renderNotesList();
 });
-$('deleteNoteBtn').addEventListener('click',()=>{
+$('deleteNoteBtn')?.addEventListener('click',()=>{
   if(!State.activeNoteId)return;
   deleteNoteById(State.activeNoteId);
 });
-$('noteTitleInput').addEventListener('input',()=>{clearTimeout(noteAutoSave);noteAutoSave=setTimeout(saveCurrentNote,800);});
-$('noteBody').addEventListener('input',()=>{updateNoteWordCount();clearTimeout(noteAutoSave);noteAutoSave=setTimeout(saveCurrentNote,800);});
-$('noteCategory').addEventListener('change',saveCurrentNote);
-$('noteSearch').addEventListener('input',renderNotesList);
+$('noteTitleInput')?.addEventListener('input',()=>{clearTimeout(noteAutoSave);noteAutoSave=setTimeout(saveCurrentNote,800);});
+$('noteBody')?.addEventListener('input',()=>{updateNoteWordCount();clearTimeout(noteAutoSave);noteAutoSave=setTimeout(saveCurrentNote,800);});
+$('noteCategory')?.addEventListener('change',saveCurrentNote);
+$('noteSearch')?.addEventListener('input',renderNotesList);
 
 // Color picker — pill buttons
 $$('.note-color-pill').forEach(btn=>btn.addEventListener('click',()=>{
@@ -2691,7 +2698,7 @@ document.getElementById('devResetRankBtn')?.addEventListener('click',()=>{
 
 // ── DEV: Load Example Data ──
 document.getElementById('devLoadExampleBtn')?.addEventListener('click',()=>{
-  if(!confirm('This will add example tasks, notes, planner blocks, and stats on top of your existing data. Continue?')) return;
+  if(!confirm('This will add example tasks, notes, planner blocks, stats, and goals on top of your existing data. Continue?')) return;
   const today=todayStr();
   const d=(offset)=>{ const dt=new Date(); dt.setDate(dt.getDate()+offset); return dateStr(dt); };
 
@@ -2731,6 +2738,74 @@ document.getElementById('devLoadExampleBtn')?.addEventListener('click',()=>{
   if(!State.rank) State.rank={points:0,events:[]};
   State.rank.points=(State.rank.points||0)+350;
   State.rank.events=[{desc:'Example data loaded',pts:350,ts:Date.now()},...(State.rank.events||[])].slice(0,20);
+
+  // Goals — seed 3 example habits with realistic history
+  const gToday = new Date();
+  const gDateStr = (offset) => {
+    const dt = new Date(gToday); dt.setDate(dt.getDate() + offset);
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  };
+  const buildLog = (pattern) => {
+    // pattern: array of {offset, status, note?} going back N days
+    const log = {};
+    pattern.forEach(({offset, status, note}) => {
+      log[gDateStr(offset)] = {status, note: note||''};
+    });
+    return log;
+  };
+
+  const exGoals = [
+    {
+      id: 'demo-goal-1',
+      name: 'Morning Run',
+      icon: '🏃',
+      color: '#4dd87a',
+      category: 'fitness',
+      desc: '20 min run before breakfast',
+      log: buildLog([
+        {offset:-13,status:'done',note:'5km park loop'}, {offset:-12,status:'done'}, {offset:-11,status:'rest',note:'rest day'},
+        {offset:-10,status:'done'}, {offset:-9,status:'done',note:'Personal best!'}, {offset:-8,status:'miss'},
+        {offset:-7,status:'done'}, {offset:-6,status:'done'}, {offset:-5,status:'done',note:'Rainy but did it'},
+        {offset:-4,status:'rest'}, {offset:-3,status:'done'}, {offset:-2,status:'done'}, {offset:-1,status:'done'},
+        {offset:0,status:'done',note:'Great start today'},
+      ])
+    },
+    {
+      id: 'demo-goal-2',
+      name: 'Read 30 Minutes',
+      icon: '📚',
+      color: '#4a8fe8',
+      category: 'learning',
+      desc: 'Read before bed each night',
+      log: buildLog([
+        {offset:-13,status:'done'}, {offset:-12,status:'miss'}, {offset:-11,status:'done',note:'Atomic Habits ch.3'},
+        {offset:-10,status:'done'}, {offset:-9,status:'done'}, {offset:-8,status:'done',note:'Finished ch.5'},
+        {offset:-7,status:'miss'}, {offset:-6,status:'done'}, {offset:-5,status:'done'},
+        {offset:-4,status:'done',note:'Deep Work — great chapter'}, {offset:-3,status:'rest'}, {offset:-2,status:'done'}, {offset:-1,status:'done'},
+      ])
+    },
+    {
+      id: 'demo-goal-3',
+      name: 'Meditate',
+      icon: '🧘',
+      color: '#9b6ce8',
+      category: 'mindfulness',
+      desc: '10 min mindfulness session',
+      log: buildLog([
+        {offset:-10,status:'done'}, {offset:-9,status:'done',note:'Body scan session'},
+        {offset:-8,status:'done'}, {offset:-7,status:'miss'}, {offset:-6,status:'done'},
+        {offset:-5,status:'done'}, {offset:-4,status:'done',note:'Felt very calm after'},
+        {offset:-3,status:'done'}, {offset:-2,status:'rest'}, {offset:-1,status:'done'},
+        {offset:0,status:'done',note:'10 min breathing'},
+      ])
+    },
+  ];
+
+  // Merge: don't overwrite existing goals with same id
+  const existingIds = Goals._data.map(g=>g.id);
+  exGoals.forEach(g => { if(!existingIds.includes(g.id)) Goals._data.push(g); });
+  Goals.save();
+  if(document.getElementById('goals')?.classList.contains('active')) Goals.render();
 
   State.save();
   updateDashboard();
@@ -2799,6 +2874,7 @@ document.getElementById('resetAllDataBtn')?.addEventListener('click', async () =
   updateDashboard();
   renderTaskList();
   renderPlanner();
+  if(typeof Goals !== 'undefined' && document.getElementById('goals')?.classList.contains('active')) Goals.render();
 
   // Seed demo data on first run only
   if(!State.hasEverRun){
@@ -3553,3 +3629,877 @@ const SupaSync = {
     });
   });
 })();
+
+/* ═══════════════════════════════════════════════════════════════
+   GOALS — REDESIGN v2
+   Drop-in replacement for the previous `Goals` module + wiring.
+   Persists to localStorage under `focus_goals_v1` (same key as v1
+   so existing habits are preserved).
+   Requires globals already present in the app:
+     - showSection(name)
+     - toast(msg, type)
+   ═══════════════════════════════════════════════════════════════ */
+
+const GOAL_ICONS = ['🎯','🏃','💪','📚','🧘','🥗','😴','💧','✍️','🎨','🎸','🌿','🧹','💰','👥','🌅','🧠','🏊','🚴','🌱','📖','🍎','🚶','💊','☕','🛌','🪥','🧴','🎧','🪞'];
+const GOAL_COLORS = ['#e8a840','#4dd87a','#ff5a53','#4a8fe8','#9b6ce8','#f07340','#3abaff','#f05090','#50d8c0','#ffcc44','#ff8a3a','#8aff7a'];
+const GOAL_CATEGORIES = [
+  {id:'health',      label:'Health',      emoji:'💪'},
+  {id:'fitness',     label:'Fitness',     emoji:'🏃'},
+  {id:'mindfulness', label:'Mind',        emoji:'🧘'},
+  {id:'learning',    label:'Learning',    emoji:'📚'},
+  {id:'creative',    label:'Creative',    emoji:'🎨'},
+  {id:'social',      label:'Social',      emoji:'👥'},
+  {id:'finance',     label:'Finance',     emoji:'💰'},
+  {id:'work',        label:'Work',        emoji:'💼'},
+  {id:'sleep',       label:'Sleep',       emoji:'😴'},
+  {id:'nutrition',   label:'Nutrition',   emoji:'🥗'},
+];
+const CAT_MAP = Object.fromEntries(GOAL_CATEGORIES.map(c => [c.id, c]));
+
+const Goals = {
+  _data: [],
+  _trash: [],
+  _activeId: null,
+  _view: 'cards', // cards | week | month
+  _storageKey: 'focus_goals_v1',
+  _trashKey: 'focus_goals_trash_v1',
+
+  get data(){ return this._data; },
+
+  /* ── Persistence ───────────────────────────────────────────── */
+  load(){
+    try {
+      const raw = localStorage.getItem(this._storageKey);
+      if (raw) this._data = JSON.parse(raw) || [];
+    } catch(e){}
+    if (!this._data.length) {
+      try {
+        const raw = sessionStorage.getItem(this._storageKey);
+        if (raw) this._data = JSON.parse(raw) || [];
+      } catch(e){}
+    }
+    try {
+      const rawT = localStorage.getItem(this._trashKey);
+      if (rawT) this._trash = JSON.parse(rawT) || [];
+    } catch(e){}
+    // shape guard
+    this._data = (this._data || []).map(g => ({
+      id: String(g.id || Date.now()),
+      name: g.name || 'Untitled',
+      icon: g.icon || '🎯',
+      color: g.color || GOAL_COLORS[0],
+      category: g.category || 'health',
+      desc: g.desc || '',
+      log: g.log || {},
+    }));
+    this._trash = (this._trash || []).map(g => ({
+      id: String(g.id || Date.now()),
+      name: g.name || 'Untitled',
+      icon: g.icon || '🎯',
+      color: g.color || GOAL_COLORS[0],
+      category: g.category || 'health',
+      desc: g.desc || '',
+      log: g.log || {},
+      deletedAt: g.deletedAt || Date.now(),
+    }));
+  },
+  save(){
+    const s = JSON.stringify(this._data);
+    try { localStorage.setItem(this._storageKey, s); } catch(e){}
+    try { sessionStorage.setItem(this._storageKey, s); } catch(e){}
+    const t = JSON.stringify(this._trash);
+    try { localStorage.setItem(this._trashKey, t); } catch(e){}
+  },
+
+  /* ── Date helpers ──────────────────────────────────────────── */
+  _pad(n){ return String(n).padStart(2,'0'); },
+  toKey(d){ return `${d.getFullYear()}-${this._pad(d.getMonth()+1)}-${this._pad(d.getDate())}`; },
+  todayStr(){ const n = new Date(); n.setHours(0,0,0,0); return this.toKey(n); },
+  formatDate(str){
+    const d = new Date(str+'T00:00:00');
+    return d.toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
+  },
+  getWeekDates(refDate){
+    const now = refDate ? new Date(refDate) : new Date();
+    now.setHours(0,0,0,0);
+    const day = now.getDay(); // Sun=0
+    const mon = new Date(now);
+    mon.setDate(now.getDate() - ((day + 6) % 7));
+    return Array.from({length:7}, (_,i) => {
+      const d = new Date(mon); d.setDate(mon.getDate()+i);
+      return this.toKey(d);
+    });
+  },
+  getMonthDates(){
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    const days = new Date(y, m+1, 0).getDate();
+    return Array.from({length: days}, (_,i) => {
+      const d = new Date(y, m, i+1); return this.toKey(d);
+    });
+  },
+
+  /* ── Streaks ───────────────────────────────────────────────── */
+  calcStreak(log){
+    const today = this.todayStr();
+    let cur = 0, longest = 0, run = 0;
+
+    // Current: walk backward from today; rest preserves, miss/empty breaks
+    let d = new Date(today+'T00:00:00');
+    while (true) {
+      const k = this.toKey(d);
+      const e = log[k];
+      if (e && e.status === 'done') cur++;
+      else if (e && e.status === 'rest') { /* preserve */ }
+      else break;
+      d.setDate(d.getDate() - 1);
+    }
+
+    // Longest: scan all dated entries chronologically
+    const dates = Object.keys(log).sort();
+    let prev = null;
+    for (const k of dates) {
+      if (log[k].status === 'done') {
+        if (prev) {
+          const diff = (new Date(k+'T00:00:00') - new Date(prev+'T00:00:00')) / 86400000;
+          run = (diff <= 2) ? run + 1 : 1;
+        } else run = 1;
+        longest = Math.max(longest, run);
+        prev = k;
+      } else if (log[k].status === 'miss') {
+        run = 0; prev = null;
+      }
+    }
+    longest = Math.max(longest, cur);
+    return { current: cur, longest };
+  },
+
+  /* ── CRUD ──────────────────────────────────────────────────── */
+  add(g){
+    g.id = Date.now().toString();
+    g.log = {};
+    this._data.push(g);
+    this.save();
+    this.render();
+  },
+  getById(id){ return this._data.find(g => g.id === id); },
+  delete(id){
+    const g = this._data.find(g => g.id === id);
+    if (g) {
+      this._trash.unshift({ ...g, deletedAt: Date.now() });
+      if (this._trash.length > 50) this._trash = this._trash.slice(0, 50);
+    }
+    this._data = this._data.filter(g => g.id !== id);
+    this.save();
+    this._updateTrashBadge();
+    showSection('goals');
+    this.render();
+    if (typeof toast === 'function') toast('Habit moved to trash','warn');
+  },
+  restoreFromTrash(id){
+    const idx = this._trash.findIndex(g => g.id === id);
+    if (idx === -1) return;
+    const g = this._trash.splice(idx, 1)[0];
+    delete g.deletedAt;
+    this._data.push(g);
+    this.save();
+    this._updateTrashBadge();
+    this.render();
+    if (typeof toast === 'function') toast('Habit restored ✦','success');
+  },
+  emptyTrash(){
+    this._trash = [];
+    this.save();
+    this._updateTrashBadge();
+  },
+  _updateTrashBadge(){
+    const badge = document.getElementById('goalsTrashCount');
+    if (!badge) return;
+    const n = this._trash.length;
+    badge.textContent = n;
+    badge.style.display = n ? 'inline' : 'none';
+  },
+  openTrash(){
+    const list = document.getElementById('goalsTrashList');
+    if (list) {
+      if (!this._trash.length) {
+        list.innerHTML = '<li class="trash-empty-state">Trash is empty.</li>';
+      } else {
+        list.innerHTML = this._trash.map(g => `
+          <li class="trash-item">
+            <span class="trash-item-icon">${g.icon}</span>
+            <span class="trash-item-name">${escapeHtml(g.name)}</span>
+            <button class="trash-restore-btn" data-id="${g.id}">Restore</button>
+            <button class="trash-perm-del-btn" data-id="${g.id}">✕</button>
+          </li>`).join('');
+        list.querySelectorAll('.trash-restore-btn').forEach(btn => {
+          btn.addEventListener('click', () => { this.restoreFromTrash(btn.dataset.id); this.openTrash(); });
+        });
+        list.querySelectorAll('.trash-perm-del-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            this._trash = this._trash.filter(g => g.id !== btn.dataset.id);
+            this.save(); this._updateTrashBadge(); this.openTrash();
+          });
+        });
+      }
+    }
+    const modal = document.getElementById('goalsTrashModal');
+    if (modal) { modal.style.display = 'flex'; requestAnimationFrame(() => modal.classList.add('active')); }
+  },
+  closeTrash(){
+    const modal = document.getElementById('goalsTrashModal');
+    if (modal) { modal.classList.remove('active'); setTimeout(() => { modal.style.display = 'none'; }, 200); }
+  },
+  /* ── Edit goal ──────────────────────────────────────────────── */
+  _editIcon: '🎯',
+  _editColor: '#e8a840',
+  _editCat: 'health',
+  openEditModal(id){
+    const g = this.getById(id); if (!g) return;
+    this._editIcon = g.icon;
+    this._editColor = g.color;
+    this._editCat = g.category;
+
+    const ni = document.getElementById('editGoalNameInput'); if (ni) ni.value = g.name;
+    const di = document.getElementById('editGoalDescInput'); if (di) di.value = g.desc || '';
+
+    // Icons
+    const ip = document.getElementById('editGoalIconPicker');
+    if (ip) {
+      ip.innerHTML = '';
+      GOAL_ICONS.forEach(icon => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'gmod-icon';
+        b.textContent = icon;
+        if (icon === this._editIcon) b.classList.add('selected');
+        b.onclick = () => { ip.querySelectorAll('.gmod-icon').forEach(x => x.classList.remove('selected')); b.classList.add('selected'); this._editIcon = icon; };
+        ip.appendChild(b);
+      });
+    }
+    // Colors
+    const cp = document.getElementById('editGoalColorPicker');
+    if (cp) {
+      cp.innerHTML = '';
+      GOAL_COLORS.forEach(color => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'gmod-color';
+        b.style.background = color; b.style.color = color;
+        if (color === this._editColor) b.classList.add('selected');
+        b.onclick = () => { cp.querySelectorAll('.gmod-color').forEach(x => x.classList.remove('selected')); b.classList.add('selected'); this._editColor = color; };
+        cp.appendChild(b);
+      });
+    }
+    // Categories
+    const catP = document.getElementById('editGoalCatPicker');
+    if (catP) {
+      catP.innerHTML = '';
+      GOAL_CATEGORIES.forEach(c => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'gmod-cat';
+        b.textContent = `${c.emoji} ${c.label}`;
+        if (c.id === this._editCat) b.classList.add('selected');
+        b.onclick = () => { catP.querySelectorAll('.gmod-cat').forEach(x => x.classList.remove('selected')); b.classList.add('selected'); this._editCat = c.id; };
+        catP.appendChild(b);
+      });
+    }
+
+    const saveBtn = document.getElementById('saveEditGoalBtn');
+    if (saveBtn) saveBtn.onclick = () => this.saveEdit(id);
+
+    const modal = document.getElementById('editGoalModal');
+    if (modal) { modal.style.display = 'flex'; requestAnimationFrame(() => modal.classList.add('active')); }
+    document.getElementById('editGoalNameInput')?.focus();
+  },
+  closeEditModal(){
+    const modal = document.getElementById('editGoalModal');
+    if (modal) { modal.classList.remove('active'); setTimeout(() => { modal.style.display = 'none'; }, 200); }
+  },
+  saveEdit(id){
+    const g = this.getById(id); if (!g) return;
+    const name = (document.getElementById('editGoalNameInput')?.value || '').trim();
+    if (!name) { if (typeof toast === 'function') toast('Please name your habit','warn'); return; }
+    g.name = name;
+    g.desc = (document.getElementById('editGoalDescInput')?.value || '').trim();
+    g.icon = this._editIcon;
+    g.color = this._editColor;
+    g.category = this._editCat;
+    this.save();
+    this.closeEditModal();
+    this.renderDetail(id);
+    this.render();
+    if (typeof toast === 'function') toast('Habit updated ✦','success');
+  },
+
+  /* ── Logging ───────────────────────────────────────────────── */
+
+  // Points per status — permanent once set per day
+  _habitPts: { done: 15, rest: 3, miss: -10 },
+
+  // Set a day status permanently; reverse old rank pts if overwriting
+  _applyStatus(g, key, status){
+    const prev = g.log[key]?.status || null;
+    if (prev === status) return false; // already set — locked
+
+    // Reverse old rank points when overwriting
+    if (prev !== null && State.rankSystemEnabled) {
+      const undo = -(this._habitPts[prev] || 0);
+      if (undo !== 0) {
+        State.rank = State.rank || { points:0, events:[] };
+        State.rank.points = Math.max(0, (State.rank.points||0) + undo);
+        State.rank.events = [{ desc:`↩ Corrected: ${g.name} (${prev})`, pts:undo, ts:Date.now() }, ...(State.rank.events||[])].slice(0,20);
+      }
+    }
+
+    g.log[key] = { status, note: g.log[key]?.note || '' };
+
+    // Award new rank points
+    const pts = this._habitPts[status] || 0;
+    if (pts !== 0) {
+      const labels = { done:'✓ Habit kept', rest:'~ Rest day', miss:'✗ Habit missed' };
+      addRankEvent(`${labels[status]}: ${g.name}`, pts);
+    }
+    return true;
+  },
+
+  logToday(status){
+    const g = this.getById(this._activeId); if (!g) return;
+    const k = this.todayStr();
+    const note = document.getElementById('gdNoteInput')?.value || '';
+    const changed = this._applyStatus(g, k, status);
+    if (!changed) {
+      if (typeof toast === 'function') toast('Already logged — tap a different status to change','normal');
+      return;
+    }
+    if (g.log[k]) g.log[k].note = note;
+    this.save();
+    this.renderDetail(this._activeId, status);
+    const labels = { done:'Done — kept ✓', rest:'Rest day ~', miss:'Missed ✗' };
+    if (typeof toast === 'function') toast(labels[status],'success');
+  },
+  logFromCard(id, status, e){
+    if (e) e.stopPropagation();
+    const g = this.getById(id); if (!g) return;
+    const k = this.todayStr();
+    const changed = this._applyStatus(g, k, status);
+    if (!changed) {
+      if (typeof toast === 'function') toast('Already logged — tap a different status to change','normal');
+      return;
+    }
+    this.save();
+    this.render({ flashId: id, flashStatus: status });
+    const labels = { done:'✓ Done', rest:'~ Rest', miss:'✗ Missed' };
+    if (typeof toast === 'function') toast(labels[status],'success');
+  },
+
+  /* ── Hero stats ────────────────────────────────────────────── */
+  _renderHero(){
+    const today = this.todayStr();
+    const dateEl  = document.getElementById('goalsHeroDate');
+    const countEl = document.getElementById('goalsHeroCount');
+    const ringDone  = document.getElementById('goalsRingDone');
+    const ringTotal = document.getElementById('goalsRingTotal');
+    const ringFill  = document.getElementById('goalsRingFill');
+
+    if (dateEl) {
+      dateEl.textContent = new Date().toLocaleDateString(undefined, {
+        weekday: 'long', month: 'long', day: 'numeric'
+      });
+    }
+    const total = this._data.length;
+    const done  = this._data.filter(g => g.log[today]?.status === 'done').length;
+    if (countEl) countEl.textContent = `${total} active habit${total === 1 ? '' : 's'}`;
+    if (ringDone)  ringDone.textContent  = done;
+    if (ringTotal) ringTotal.textContent = `/${total}`;
+    if (ringFill) {
+      const C = 2 * Math.PI * 52; // 326.7
+      const pct = total ? done / total : 0;
+      ringFill.setAttribute('stroke-dasharray', C.toFixed(2));
+      ringFill.setAttribute('stroke-dashoffset', (C * (1 - pct)).toFixed(2));
+    }
+  },
+
+  /* ── Tabs ──────────────────────────────────────────────────── */
+  setView(view){
+    this._view = view;
+    document.querySelectorAll('#goalsTabs .goals-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === view);
+    });
+    this._applyView();
+  },
+  _applyView(){
+    const hasData = !!this._data.length;
+    const grid     = document.getElementById('goalsGrid');
+    const empty    = document.getElementById('goalsEmpty');
+    const overview = document.getElementById('goalsOverview');
+    const weekP    = document.getElementById('goalsWeekPane');
+    const monthP   = document.getElementById('goalsMonthPane');
+
+    if (!hasData) {
+      if (grid)     grid.style.display     = 'none';
+      if (overview) overview.style.display = 'none';
+      if (empty)    empty.style.display    = 'flex';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    if (this._view === 'cards') {
+      if (grid)     grid.style.display     = 'grid';
+      if (overview) overview.style.display = 'none';
+    } else {
+      if (grid)     grid.style.display     = 'none';
+      if (overview) overview.style.display = 'grid';
+      if (weekP)  weekP.style.display  = (this._view === 'week')  ? 'block' : 'none';
+      if (monthP) monthP.style.display = (this._view === 'month') ? 'block' : 'none';
+      if (this._view === 'week')  this._renderWeekPane();
+      if (this._view === 'month') this._renderMonthPane();
+    }
+  },
+
+  /* ── Cards render ──────────────────────────────────────────── */
+  render(opts){
+    opts = opts || {};
+    this._renderHero();
+
+    const grid = document.getElementById('goalsGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    const today = this.todayStr();
+    const weekDates = this.getWeekDates();
+    const dayNames = ['M','T','W','T','F','S','S'];
+
+    this._data.forEach((g, idx) => {
+      const streaks = this.calcStreak(g.log);
+      const todayEntry = g.log[today];
+      const card = document.createElement('article');
+      card.className = 'goal-card';
+      card.style.setProperty('--gc', g.color);
+      card.style.animationDelay = `${Math.min(idx, 8) * 0.05}s`;
+      card.onclick = () => this.renderDetail(g.id);
+
+      const ribbon = weekDates.map((d, i) => {
+        const e = g.log[d];
+        const cls = [
+          'gc-day-dot',
+          e ? e.status : '',
+          d > today ? 'future' : '',
+          d === today ? 'today' : '',
+          (opts.flashId === g.id && d === today && opts.flashStatus) ? 'just-logged' : ''
+        ].filter(Boolean).join(' ');
+        return `<div class="gc-day">
+          <span class="gc-day-label">${dayNames[i]}</span>
+          <div class="${cls}"></div>
+        </div>`;
+      }).join('');
+
+      const cat = CAT_MAP[g.category] || { label: g.category, emoji: '' };
+      const ts = todayEntry?.status;
+
+      card.innerHTML = `
+        <div class="gc-top">
+          <div class="gc-icon">${g.icon}</div>
+          <div class="gc-titles">
+            <div class="gc-name">${escapeHtml(g.name)}</div>
+            <div class="gc-cat">${cat.emoji} ${cat.label}</div>
+          </div>
+          <div class="gc-streak" title="Longest: ${streaks.longest}">
+            <span class="flame">🔥</span>
+            <span class="n">${streaks.current}</span>
+            <span class="u">d</span>
+          </div>
+        </div>
+        ${g.desc ? `<div class="gc-desc">"${escapeHtml(g.desc)}"</div>` : ''}
+        <div class="gc-ribbon">${ribbon}</div>
+        <div class="gc-actions">
+          <button type="button" class="gc-act done ${ts==='done'?'is-active':''}" data-act="done">✓ Done</button>
+          <button type="button" class="gc-act rest ${ts==='rest'?'is-active':''}" data-act="rest">~ Rest</button>
+          <button type="button" class="gc-act miss ${ts==='miss'?'is-active':''}" data-act="miss">× Miss</button>
+        </div>
+      `;
+      card.querySelectorAll('.gc-act').forEach(btn => {
+        btn.addEventListener('click', (e) => this.logFromCard(g.id, btn.dataset.act, e));
+      });
+      grid.appendChild(card);
+    });
+
+    this._applyView();
+  },
+
+  /* ── Week / Month matrix panes ─────────────────────────────── */
+  _renderWeekPane(){
+    const matrix = document.getElementById('goalsWeekMatrix');
+    const range  = document.getElementById('goalsWeekRange');
+    if (!matrix) return;
+    const days = this.getWeekDates();
+    const today = this.todayStr();
+
+    matrix.innerHTML = this._data.map(g => `
+      <div class="gm-row" style="--gc:${g.color}">
+        <div class="gm-row-head">
+          <div class="gm-row-icon">${g.icon}</div>
+          <div class="gm-row-name">${escapeHtml(g.name)}</div>
+        </div>
+        <div class="gm-cells week">
+          ${days.map(d => {
+            const e = g.log[d];
+            const cls = [
+              'gm-cell',
+              e ? e.status : '',
+              d > today ? 'future' : '',
+              d === today ? 'today' : ''
+            ].filter(Boolean).join(' ');
+            return `<div class="${cls}" title="${d}"></div>`;
+          }).join('')}
+        </div>
+      </div>
+    `).join('');
+
+    if (range) {
+      const f = k => new Date(k+'T00:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'});
+      range.textContent = `${f(days[0])} — ${f(days[6])}`;
+    }
+  },
+
+  _renderMonthPane(){
+    const matrix = document.getElementById('goalsMonthMatrix');
+    const head   = document.getElementById('goalsMonthHead');
+    const label  = document.getElementById('goalsMonthLabel');
+    if (!matrix) return;
+    const days = this.getMonthDates();
+    const today = this.todayStr();
+
+    // Build header (always 31 cols; pad)
+    if (head) {
+      let h = '';
+      for (let i = 1; i <= 31; i++) h += `<span>${i <= days.length ? i : ''}</span>`;
+      head.innerHTML = h;
+    }
+
+    matrix.innerHTML = this._data.map(g => {
+      const cells = [];
+      for (let i = 0; i < 31; i++) {
+        if (i >= days.length) {
+          cells.push(`<div class="gm-cell" style="visibility:hidden"></div>`);
+          continue;
+        }
+        const d = days[i];
+        const e = g.log[d];
+        const cls = [
+          'gm-cell',
+          e ? e.status : '',
+          d > today ? 'future' : '',
+          d === today ? 'today' : ''
+        ].filter(Boolean).join(' ');
+        cells.push(`<div class="${cls}" title="${d}"></div>`);
+      }
+      return `<div class="gm-row" style="--gc:${g.color}">
+        <div class="gm-row-head">
+          <div class="gm-row-icon">${g.icon}</div>
+          <div class="gm-row-name">${escapeHtml(g.name)}</div>
+        </div>
+        <div class="gm-cells month">${cells.join('')}</div>
+      </div>`;
+    }).join('');
+
+    if (label) label.textContent = new Date().toLocaleDateString(undefined,{month:'long',year:'numeric'});
+  },
+
+  /* ── Detail page ───────────────────────────────────────────── */
+  renderDetail(id, flashStatus){
+    this._activeId = id;
+    const g = this.getById(id); if (!g) return;
+    showSection('goal-detail');
+
+    const today = this.todayStr();
+    const weekDates = this.getWeekDates();
+    const monthDates = this.getMonthDates();
+    const streaks = this.calcStreak(g.log);
+
+    const all = Object.values(g.log);
+    const done = all.filter(e => e.status==='done').length;
+    const miss = all.filter(e => e.status==='miss').length;
+    const rest = all.filter(e => e.status==='rest').length;
+
+    // Apply color
+    const hero = document.getElementById('gdHero');
+    if (hero) hero.style.setProperty('--gc', g.color);
+
+    setText('gdIcon', g.icon);
+    setText('gdName', g.name);
+    const cat = CAT_MAP[g.category] || { label:g.category, emoji:'' };
+    setText('gdCategory', `${cat.emoji} ${cat.label}`);
+    setText('gdDesc', g.desc ? `"${g.desc}"` : '');
+
+    setText('gdCurrent', streaks.current);
+    setText('gdLongest', streaks.longest);
+    setText('gdDone', done);
+    setText('gdRest', rest);
+    setText('gdMiss', miss);
+
+    setText('gdTodayDate', this.formatDate(today));
+    const f = k => new Date(k+'T00:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'});
+    setText('gdWeekRange', `${f(weekDates[0])} — ${f(weekDates[6])}`);
+    setText('gdMonthLabel', new Date().toLocaleDateString(undefined,{month:'long',year:'numeric'}));
+
+    // Buttons / note
+    const todayEntry = g.log[today];
+    ['gdBtnDone','gdBtnRest','gdBtnMiss'].forEach(bid => {
+      const b = document.getElementById(bid); if (b) b.classList.remove('is-active');
+    });
+    if (todayEntry) {
+      const map = { done:'gdBtnDone', rest:'gdBtnRest', miss:'gdBtnMiss' };
+      document.getElementById(map[todayEntry.status])?.classList.add('is-active');
+    }
+    const note = document.getElementById('gdNoteInput');
+    if (note) note.value = todayEntry?.note || '';
+
+    // Wire log + delete buttons (rebind each render is fine; small surface)
+    document.getElementById('gdBtnDone').onclick = () => this.logToday('done');
+    document.getElementById('gdBtnRest').onclick = () => this.logToday('rest');
+    document.getElementById('gdBtnMiss').onclick = () => this.logToday('miss');
+    const del = document.getElementById('gdDeleteBtn');
+    if (del) del.onclick = () => {
+      if (confirm(`Move "${g.name}" to trash?`)) this.delete(id);
+    };
+    const edit = document.getElementById('gdEditBtn');
+    if (edit) edit.onclick = () => this.openEditModal(id);
+
+    // Week visualisation
+    const weekEl = document.getElementById('gdWeek');
+    if (weekEl) {
+      const dn = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+      weekEl.innerHTML = weekDates.map((d, i) => {
+        const e = g.log[d];
+        const cls = [
+          'dot',
+          e ? e.status : '',
+          d === today ? 'today' : '',
+        ].filter(Boolean).join(' ');
+        const dayNum = parseInt(d.split('-')[2], 10);
+        return `<div class="gd-week-cell">
+          <span class="lbl">${dn[i]}</span>
+          <div class="${cls}" title="${d}"><span class="num">${dayNum}</span></div>
+        </div>`;
+      }).join('');
+    }
+
+    // Month grid (with DOW header + leading blanks)
+    const monthEl = document.getElementById('gdMonth');
+    if (monthEl) {
+      const dow = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+      const now = new Date();
+      const firstDow = new Date(now.getFullYear(), now.getMonth(), 1).getDay();
+      const offset = (firstDow + 6) % 7; // shift to Mon-start
+      let html = dow.map(d => `<div class="gd-month-dow">${d}</div>`).join('');
+      for (let i = 0; i < offset; i++) html += `<div class="gd-month-cell empty"></div>`;
+      html += monthDates.map(d => {
+        const e = g.log[d];
+        const cls = [
+          'gd-month-cell',
+          e ? e.status : '',
+          d === today ? 'today' : ''
+        ].filter(Boolean).join(' ');
+        const dayNum = parseInt(d.split('-')[2], 10);
+        return `<div class="${cls}" title="${d}">${dayNum}</div>`;
+      }).join('');
+      monthEl.innerHTML = html;
+    }
+
+    // History
+    const hist = document.getElementById('gdHistory');
+    const histCount = document.getElementById('gdHistoryCount');
+    if (hist) {
+      const entries = Object.entries(g.log).sort((a,b) => b[0].localeCompare(a[0]));
+      if (histCount) histCount.textContent = `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`;
+      if (!entries.length) {
+        hist.innerHTML = `<div class="gd-h-item">
+          <span class="gd-h-glyph">·</span>
+          <span class="gd-h-date">—</span>
+          <span class="gd-h-note is-empty">Nothing logged yet — start with today.</span>
+        </div>`;
+      } else {
+        hist.innerHTML = entries.slice(0, 60).map(([date, entry], i) => {
+          const sym = entry.status === 'done' ? '✓' : entry.status === 'rest' ? '~' : '×';
+          const noteHtml = entry.note
+            ? `<span class="gd-h-note">"${escapeHtml(entry.note)}"</span>`
+            : `<span class="gd-h-note is-empty">${entry.status === 'done' ? 'Kept the promise.' : entry.status === 'rest' ? 'Rest day.' : 'Missed — try again.'}</span>`;
+          return `<div class="gd-h-item" style="animation-delay:${i*0.025}s">
+            <span class="gd-h-glyph ${entry.status}">${sym}</span>
+            <span class="gd-h-date">${this.formatDate(date)}</span>
+            ${noteHtml}
+          </div>`;
+        }).join('');
+      }
+    }
+
+    // Note input → autosave
+    if (note && !note._wired) {
+      note._wired = true;
+      note.addEventListener('input', () => {
+        const cur = this.getById(this._activeId);
+        const k = this.todayStr();
+        if (cur?.log[k]) { cur.log[k].note = note.value; this.save(); }
+      });
+    }
+
+    // Cards grid stays fresh underneath
+    if (flashStatus) this._renderHero();
+  },
+
+  /* ── Modal ─────────────────────────────────────────────────── */
+  _selectedIcon: '🎯',
+  _selectedColor: '#e8a840',
+  _selectedCat: 'health',
+  initModal(){
+    // Icons
+    const ip = document.getElementById('goalIconPicker');
+    if (ip) {
+      ip.innerHTML = '';
+      GOAL_ICONS.forEach(icon => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'gmod-icon';
+        b.textContent = icon;
+        if (icon === this._selectedIcon) b.classList.add('selected');
+        b.onclick = () => {
+          ip.querySelectorAll('.gmod-icon').forEach(x => x.classList.remove('selected'));
+          b.classList.add('selected');
+          this._selectedIcon = icon;
+        };
+        ip.appendChild(b);
+      });
+    }
+    // Colors
+    const cp = document.getElementById('goalColorPicker');
+    if (cp) {
+      cp.innerHTML = '';
+      GOAL_COLORS.forEach(color => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'gmod-color';
+        b.style.background = color; b.style.color = color;
+        if (color === this._selectedColor) b.classList.add('selected');
+        b.onclick = () => {
+          cp.querySelectorAll('.gmod-color').forEach(x => x.classList.remove('selected'));
+          b.classList.add('selected');
+          this._selectedColor = color;
+        };
+        cp.appendChild(b);
+      });
+    }
+    // Categories
+    const catP = document.getElementById('goalCatPicker');
+    if (catP) {
+      catP.innerHTML = '';
+      GOAL_CATEGORIES.forEach(c => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'gmod-cat';
+        b.textContent = `${c.emoji} ${c.label}`;
+        if (c.id === this._selectedCat) b.classList.add('selected');
+        b.onclick = () => {
+          catP.querySelectorAll('.gmod-cat').forEach(x => x.classList.remove('selected'));
+          b.classList.add('selected');
+          this._selectedCat = c.id;
+        };
+        catP.appendChild(b);
+      });
+    }
+    const ni = document.getElementById('goalNameInput'); if (ni) ni.value = '';
+    const di = document.getElementById('goalDescInput'); if (di) di.value = '';
+  },
+  openModal(){
+    this.initModal();
+    const m = document.getElementById('addGoalModal');
+    if (m) {
+      m.style.display = 'flex';
+      requestAnimationFrame(() => m.classList.add('active'));
+    }
+    document.getElementById('goalNameInput')?.focus();
+  },
+  closeModal(){
+    const m = document.getElementById('addGoalModal');
+    if (m) {
+      m.classList.remove('active');
+      setTimeout(() => { m.style.display = 'none'; }, 200);
+    }
+  },
+  saveFromModal(){
+    const name = (document.getElementById('goalNameInput')?.value || '').trim();
+    if (!name) { if (typeof toast === 'function') toast('Please name your habit','warn'); return; }
+    const desc = (document.getElementById('goalDescInput')?.value || '').trim();
+    this.add({
+      name, desc,
+      icon: this._selectedIcon,
+      color: this._selectedColor,
+      category: this._selectedCat,
+    });
+    this.closeModal();
+    if (typeof toast === 'function') toast('Habit created — keep it daily ✦','success');
+  },
+};
+
+/* ── Helpers ─────────────────────────────────────────────────── */
+function setText(id, v){ const el = document.getElementById(id); if (el) el.textContent = v; }
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+/* ── Wire UI ─────────────────────────────────────────────────── */
+(function wireGoals(){
+  // Load any saved data immediately so first paint is correct
+  try { Goals.load(); } catch(e){}
+  Goals._updateTrashBadge();
+
+  const addBtn   = document.getElementById('addGoalBtn');
+  const closeBtn = document.getElementById('addGoalModalClose');
+  const saveBtn  = document.getElementById('saveGoalBtn');
+  const modal    = document.getElementById('addGoalModal');
+  const name     = document.getElementById('goalNameInput');
+  const tabs     = document.getElementById('goalsTabs');
+
+  if (addBtn)   addBtn.addEventListener('click', () => Goals.openModal());
+  if (closeBtn) closeBtn.addEventListener('click', () => Goals.closeModal());
+  if (saveBtn)  saveBtn.addEventListener('click', () => Goals.saveFromModal());
+  if (modal)    modal.addEventListener('click', e => { if (e.target === modal) Goals.closeModal(); });
+  if (name)     name.addEventListener('keydown', e => { if (e.key === 'Enter') Goals.saveFromModal(); });
+
+  // Trash
+  const trashBtn = document.getElementById('goalsTrashBtn');
+  const trashModal = document.getElementById('goalsTrashModal');
+  const trashClose = document.getElementById('goalsTrashModalClose');
+  const emptyTrash = document.getElementById('emptyGoalsTrashBtn');
+  if (trashBtn) trashBtn.addEventListener('click', () => Goals.openTrash());
+  if (trashClose) trashClose.addEventListener('click', () => Goals.closeTrash());
+  if (trashModal) trashModal.addEventListener('click', e => { if (e.target === trashModal) Goals.closeTrash(); });
+  if (emptyTrash) emptyTrash.addEventListener('click', () => { if (confirm('Permanently delete all trashed habits?')) { Goals.emptyTrash(); Goals.openTrash(); } });
+
+  // Edit modal
+  const editGoalModalClose = document.getElementById('editGoalModalClose');
+  const editGoalModal = document.getElementById('editGoalModal');
+  if (editGoalModalClose) editGoalModalClose.addEventListener('click', () => Goals.closeEditModal());
+  if (editGoalModal) editGoalModal.addEventListener('click', e => { if (e.target === editGoalModal) Goals.closeEditModal(); });
+
+  if (tabs) {
+    tabs.addEventListener('click', e => {
+      const btn = e.target.closest('.goals-tab');
+      if (btn) Goals.setView(btn.dataset.view);
+    });
+  }
+
+  // Escape closes modal
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      const m = document.getElementById('addGoalModal');
+      if (m && m.style.display !== 'none') Goals.closeModal();
+    }
+  });
+
+  // Initial render (in case the page is already active)
+  if (document.getElementById('goals')?.classList.contains('active')) Goals.render();
+})();
+
+// Re-render on navigation back to /goals (the host app calls Goals.render()
+// inside its showSection() switch — this line is just belt-and-braces).
+if (document.getElementById('goals')?.classList.contains('active')) {
+  Goals.render();
+}
