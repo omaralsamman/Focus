@@ -509,6 +509,8 @@ body.light-mode .block-countdown.upcoming { background: rgba(59,130,246,0.12); c
 body.light-mode .stats-range-tabs  { background: #F0EDFF; border-color: rgba(100,90,200,0.15); }
 body.light-mode .range-tab         { color: #64748B; }
 body.light-mode .range-tab.active  { background: var(--accent); color: #fff; box-shadow: 0 2px 8px var(--accent-glow); }
+body.light-mode .stats-nav-btn     { background: #F0EDFF; border-color: rgba(100,90,200,0.15); }
+body.light-mode .stats-period-label { color: #94A3B8; }
 body.light-mode .eff-track         { stroke: rgba(0,0,0,0.07) !important; }
 body.light-mode .bar-chart-bar.highlight {
   background: linear-gradient(180deg, #5DD99A, #27A06A);
@@ -517,6 +519,10 @@ body.light-mode .bar-chart-bar.highlight {
 body.light-mode .bar-chart-bar:not(.highlight) {
   background: rgba(39,160,106,0.14);
   border: 1px solid rgba(39,160,106,0.20);
+}
+body.light-mode .bar-chart-col.future-day .bar-chart-bar:not(.highlight) {
+  background: rgba(0,0,0,0.04);
+  border: 1px dashed rgba(0,0,0,0.12);
 }
 body.light-mode .big-stat-value { color: var(--accent) !important; font-weight: 800; }
 body.light-mode .big-stat-label { color: #64748B; font-weight: 600; }
@@ -1583,6 +1589,12 @@ body.light-mode .bst-time-input { color-scheme:light; }
 .stats-range-tabs { display:flex; gap:5px; background:var(--bg-card); border:1px solid var(--border); border-radius:50px; padding:3px; height:fit-content; }
 .range-tab { padding:6px 18px; border:none; border-radius:50px; background:transparent; color:var(--text-secondary); font-family:var(--font-display); font-size:14px; cursor:pointer; transition:all 0.2s; }
 .range-tab.active { background:var(--accent); color:#000; font-weight:600; }
+.stats-header-controls { display:flex; flex-direction:column; align-items:flex-end; gap:8px; }
+.stats-period-nav { display:flex; align-items:center; gap:8px; }
+.stats-nav-btn { width:28px; height:28px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-secondary); border-radius:50%; cursor:pointer; font-size:14px; line-height:1; transition:all 0.2s; display:flex; align-items:center; justify-content:center; padding:0; }
+.stats-nav-btn:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); background:var(--accent-dim); }
+.stats-nav-btn:disabled { opacity:0.3; cursor:default; }
+.stats-period-label { font-family:var(--font-mono); font-size:11px; color:var(--text-muted); letter-spacing:0.5px; white-space:nowrap; min-width:90px; text-align:center; }
 /* ── STATS GRID — 4-col base ── */
 .stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:18px; }
 
@@ -1652,6 +1664,8 @@ body.light-mode .bst-time-input { color-scheme:light; }
 .achievements-card { grid-column:span 1; }
 .bar-chart { display:flex; align-items:stretch; gap:7px; height:150px; overflow:visible; position:relative; padding-top:16px; }
 .bar-chart-col { flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; min-width:0; justify-content:flex-end; }
+.bar-chart-col.future-day { opacity:0.35; }
+.bar-chart-col.future-day .bar-chart-bar:not(.highlight) { background:rgba(255,255,255,0.06); border:1px dashed rgba(255,255,255,0.1); }
 .bar-chart-bar { width:100%; border-radius:5px 5px 0 0; min-height:4px; max-height:110px; transition:height 0.8s ease; flex-shrink:0; }
 .bar-chart-bar.highlight { background:linear-gradient(180deg,#00e676,#4dd87a); box-shadow:0 0 12px rgba(77,216,122,0.5); }
 .bar-chart-bar:not(.highlight) { background:rgba(77,216,122,0.18); border:1px solid rgba(77,216,122,0.12); }
@@ -1967,7 +1981,8 @@ body.light-mode .note-color-pill.active { border-color:rgba(0,0,0,0.70); box-sha
 
   /* Monthly grid: compact */
   .monthly-planner-grid { padding:8px; gap:2px; }
-  .month-cell { min-height:52px; padding:3px; gap:1px; }
+  .month-cell { min-height:52px; max-height:52px; height:52px; padding:3px; gap:1px; overflow:hidden; }
+  .month-cell-blocks { overflow:hidden; flex:1; min-height:0; }
   .month-cell-num { font-size:10px; }
   .month-mini-block { font-size:8px; padding:1px 3px; }
   .month-more { font-size:7px; }
@@ -4831,6 +4846,7 @@ body.light-mode .dev-apply-btn:hover { background: #DC2626; color: #fff; }
   margin: 14px 0 4px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;               /* ← add this */
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -5446,13 +5462,208 @@ body.light-mode .dev-apply-btn:hover { background: #DC2626; color: #fff; }
   .gd-stat + .gd-stat::before { display: none; }
   .gm-row, .gm-row.head-row { grid-template-columns: 110px 1fr; }
 }
+
+/* ── MOBILE GOALS: compact everything ── */
 @media (max-width: 640px) {
-  .goals-hero { grid-template-columns: 1fr; gap: 18px; align-items: start; }
-  .goals-ring { width: 110px; height: 110px; }
-  .goals-grid { grid-template-columns: 1fr; }
-  .gd-stats { grid-template-columns: repeat(2, 1fr); }
-  .gd-stat:nth-child(n+3) { border-top: 1px solid var(--border); }
-  .gd-hero { grid-template-columns: 1fr; text-align: left; }
-  .gd-hero-icon { width: 72px; height: 72px; font-size: 34px; }
-  .gmod-row { grid-template-columns: 1fr; }
+
+  /* ── Goals list page ── */
+  #goals.section { padding-bottom: 80px; }
+
+  /* Hero: single row — ring left, text+button right */
+  .goals-hero {
+    grid-template-columns: auto 1fr;
+    gap: 14px;
+    align-items: center;
+    padding: 6px 2px 16px;
+    margin-bottom: 16px;
+  }
+  /* Put ring-wrap first (it's already right-column) — reorder visually */
+  .goals-ring-wrap {
+    flex-direction: column;
+    gap: 10px;
+    order: -1;         /* ring on left */
+    align-items: center;
+  }
+  .goals-ring { width: 80px; height: 80px; }
+  .goals-ring-num { font-size: 24px; }
+  .goals-ring-num em { font-size: 16px; }
+  .goals-ring-label { font-size: 7px; margin-top: 4px; }
+
+  /* Shrink hero title */
+  .goals-hero-eyebrow { font-size: 9px; margin-bottom: 6px; }
+  .goals-hero-title { font-size: 26px; line-height: 1.05; }
+  .goals-hero-sub { font-size: 10px; margin-top: 8px; }
+
+  /* "New Habit" button: compact */
+  .goals-new-btn {
+    padding: 9px 14px 9px 10px;
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+  .goals-new-btn .plus {
+    width: 18px; height: 18px; font-size: 13px;
+  }
+
+  /* Tabs row */
+  .goals-tabs-row { margin-bottom: 14px; gap: 8px; }
+  .goals-tab { padding: 7px 13px; font-size: 10px; }
+
+  /* Goal cards: tighter, hide description to save space */
+  .goals-grid { grid-template-columns: 1fr; gap: 12px; }
+  .goal-card { padding: 16px 16px 13px; border-radius: 14px; }
+  .gc-icon { width: 42px; height: 42px; font-size: 22px; border-radius: 11px; }
+  .gc-name { font-size: 17px; }
+  .gc-cat { font-size: 8.5px; margin-top: 3px; }
+  .gc-streak { padding: 5px 10px 5px 8px; }
+  .gc-streak .n { font-size: 13px; }
+  .gc-streak .u { font-size: 8px; }
+  /* Hide description on cards — visible in detail view */
+  .gc-desc { display: none; }
+  /* Tighter ribbon */
+  .gc-ribbon { margin-top: 12px; gap: 4px; }
+  .gc-day-label { font-size: 7px; }
+  .gc-day-dot { border-radius: 6px; }
+  /* Action buttons — bigger tap targets, horizontal */
+  .gc-actions { margin-top: 12px; padding-top: 12px; gap: 5px; }
+  .gc-act { padding: 10px 4px; font-size: 9px; border-radius: 9px; }
+
+  /* ── Week/month matrix ── */
+  .gm-row, .gm-row.head-row { grid-template-columns: 86px 1fr; }
+  .gm-row-name { font-size: 10px; }
+  .gm-row-icon { width: 22px; height: 22px; font-size: 13px; border-radius: 6px; }
+
+  /* ── Goal detail page ── */
+
+  /* Compact topbar */
+  .gd-topbar { margin-bottom: 12px; gap: 10px; }
+  .gd-back { padding: 7px 12px 7px 10px; font-size: 10px; }
+  .gd-icon-btn { width: 34px; height: 34px; font-size: 14px; border-radius: 10px; }
+
+  /* Hero: side-by-side icon + text, smaller */
+  .gd-hero {
+    grid-template-columns: auto 1fr;
+    gap: 14px;
+    padding: 16px;
+    border-radius: 16px;
+    margin-bottom: 12px;
+  }
+  .gd-hero-icon { width: 58px; height: 58px; font-size: 28px; border-radius: 14px; }
+  .gd-hero-cat { font-size: 9px; margin-bottom: 4px; }
+  .gd-hero-name { font-size: 22px; margin-bottom: 4px; }
+  .gd-hero-desc { font-size: 13px; }
+
+  /* Stats: 5-in-a-row on mobile but smaller */
+  .gd-stats {
+    grid-template-columns: repeat(5, 1fr);
+    border-radius: 14px;
+    margin-bottom: 12px;
+  }
+  .gd-stat { padding: 12px 6px; }
+  .gd-stat-num { font-size: 20px; margin-bottom: 4px; }
+  .gd-stat-label { font-size: 7.5px; letter-spacing: 0.8px; }
+  /* Restore dividers for 5-column layout */
+  .gd-stat:nth-child(n+3) { border-top: none; }
+  .gd-stat + .gd-stat::before { display: block; }
+
+  /* Log pane: horizontal action buttons */
+  .gd-row { grid-template-columns: 1fr; gap: 10px; margin-bottom: 10px; }
+  .gd-pane { padding: 16px; border-radius: 14px; }
+  .gd-pane-head { margin-bottom: 12px; }
+  .gd-pane-title { font-size: 17px; }
+  .gd-pane-meta { font-size: 9px; }
+
+  /* Log buttons: 3 columns side by side */
+  .gd-log-buttons {
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .gd-log-btn {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 10px 6px;
+    gap: 6px;
+    font-size: 9.5px;
+    border-radius: 11px;
+  }
+  .gd-log-btn .glyph {
+    width: 28px; height: 28px; font-size: 14px;
+  }
+  .gd-log-btn:hover { transform: none; }
+
+  /* Week dots: slightly smaller */
+  .gd-week { gap: 5px; }
+  .gd-week-cell .dot { border-radius: 10px; max-width: 46px; }
+  .gd-week-cell .lbl { font-size: 8px; }
+  .gd-week-cell .dot::before { font-size: 18px; }
+
+  /* Bottom row: stack */
+  .gd-bottom-row { grid-template-columns: 1fr; gap: 10px; margin-bottom: 10px; }
+  .gd-history-card { padding: 14px 16px; border-radius: 14px; }
+  .gd-month { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+
+  /* History list items: tighter */
+  .gd-h-item {
+    grid-template-columns: 24px 1fr auto;
+    gap: 10px; padding: 10px 2px;
+  }
+  .gd-h-date { font-size: 10px; }
+  .gd-h-note { font-size: 12px; }
+
+  /* Month overview: per-goal calendar cards on mobile */
+  .gm-mobile-month-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .gm-mobile-month-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gc, var(--accent));
+    border-radius: 16px;
+    padding: 14px 14px 16px;
+    animation: cardIn .4s ease both;
+  }
+  .gm-mobile-month-card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .gm-mobile-month-card .gm-row-icon {
+    width: 34px; height: 34px;
+    font-size: 18px;
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--gc, var(--accent)) 18%, transparent);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .gm-mobile-month-card .gm-row-name {
+    font-family: var(--font-serif);
+    font-weight: 300;
+    font-size: 16px;
+    color: var(--text-primary);
+  }
+  .gm-mobile-cal {
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+    gap: 4px;
+    justify-content: stretch;
+  }
+  .gm-mobile-cal .gd-month-cell {
+    font-size: 10px;
+    padding: 3px 4px;
+    border-radius: 7px;
+  }
+  .gm-mobile-cal .gd-month-dow {
+    font-size: 8px;
+    padding-bottom: 5px;
+  }
+
+  /* Modal: full-width bottom-sheet feel */
+  .goal-modal-box { max-width: 100%; width: calc(100% - 20px); }
+  .goal-modal-body { padding: 16px; gap: 14px; }
+  .gmod-icons { max-height: 130px; }
+  .gmod-row { grid-template-columns: 1fr; gap: 14px; }
 }
