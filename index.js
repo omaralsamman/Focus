@@ -18,7 +18,7 @@ const State = {
   stats:{ focusMinutesByDay:{}, totalPomodoros:0, bestStreak:0, currentStreak:0, lastFocusDay:'', missedTasks:[], doneOnTimeTasks:[] },
   notes:[], noteTrash:[], activeNoteId:null,
   theme:'midnight', lightMode:false,
-  statsRange:'week', zoomedDay:null,
+  statsRange:'week', statsOffset:0, zoomedDay:null,
   hasEverRun:false,
   rankSystemEnabled: true,
   rank: { points: 0, events: [] },
@@ -154,6 +154,8 @@ function applyTheme(theme, light){
 
 // ── NAVIGATION ──
 function showSection(name){
+  // Reset stats scroll-reveal flag when leaving stats so re-entry plays animations fresh
+  if(name !== 'stats'){ _statsRevealDone = false; }
   $$('.section').forEach(s=>s.classList.remove('active'));
   $$('.nav-item,.mobile-nav-item').forEach(n=>n.classList.remove('active'));
   const sec=document.getElementById(name); if(sec) sec.classList.add('active');
@@ -1751,8 +1753,14 @@ $('blockNoteModal')?.addEventListener('click',e=>{ if(e.target===$('blockNoteMod
 // ── STATS ──
 $$('.range-tab').forEach(t=>t.addEventListener('click',()=>{
   $$('.range-tab').forEach(x=>x.classList.remove('active')); t.classList.add('active');
-  State.statsRange=t.dataset.range; updateStats();
+  State.statsRange=t.dataset.range; State.statsOffset=0; updateStats();
 }));
+
+// Stats period navigation (prev/next week or month)
+document.addEventListener('click', e=>{
+  if(e.target.id==='statsNavPrev'){ State.statsOffset--; updateStats(); }
+  if(e.target.id==='statsNavNext' && State.statsOffset<0){ State.statsOffset++; updateStats(); }
+});
 
 const achievements=[
   {id:'first_session',icon:'⚡',name:'First Session',max:1,val:s=>Math.min(1,s.totalPomodoros)},
@@ -1770,23 +1778,46 @@ function updateStats(){
   $('totalTasksDone').textContent=Math.max(tasks.filter(t=>t.done).length, State.stats.doneOnTimeTasks.length);
   $('bestStreak').textContent=s.bestStreak;
   const isMonth=State.statsRange==='month';
+  const off=State.statsOffset||0;
   let days;
   const todayKey=todayStr();
   if(isMonth){
-    const now=new Date(),y=now.getFullYear(),mo=now.getMonth(),dim=new Date(y,mo+1,0).getDate();
-    days=Array.from({length:dim},(_,i)=>{const d=new Date(y,mo,i+1);return{key:dateStr(d),label:String(i+1)};})
-         .filter(d=>d.key<=todayKey);
+    const now=new Date();
+    const baseMonth=new Date(now.getFullYear(), now.getMonth()+off, 1);
+    const y=baseMonth.getFullYear(),mo=baseMonth.getMonth(),dim=new Date(y,mo+1,0).getDate();
+    days=Array.from({length:dim},(_,i)=>{const d=new Date(y,mo,i+1);return{key:dateStr(d),label:String(i+1)};});
+    // Period label
+    const periodName=baseMonth.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+    const lbl=$('statsPeriodLabel');
+    if(lbl) lbl.textContent=off===0?'This Month':periodName;
   } else {
-    days=getWeekDays(0).map((k,i)=>({key:k,label:['M','T','W','T','F','S','S'][i]}));
+    days=getWeekDays(off).map((k,i)=>({key:k,label:['M','T','W','T','F','S','S'][i]}));
+    // Period label
+    const lbl=$('statsPeriodLabel');
+    if(lbl){
+      if(off===0) lbl.textContent='This Week';
+      else if(off===-1) lbl.textContent='Last Week';
+      else{
+        const mon=new Date(days[0].key+'T12:00:00'), sun=new Date(days[6].key+'T12:00:00');
+        const f=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+        lbl.textContent=`${f(mon)} – ${f(sun)}`;
+      }
+    }
   }
-  $('barChartLabel').textContent=`Daily Focus (${isMonth?'this month':'this week'}, minutes)`;
-  $('lineGraphLabel').textContent=`Focus Trend (${isMonth?'month':'week'})`;
+
+  // Enable/disable next button
+  const nextBtn=$('statsNavNext');
+  if(nextBtn) nextBtn.disabled = off >= 0;
+
+  $('barChartLabel').textContent=`Daily Focus (${isMonth?($('statsPeriodLabel')?.textContent||'this month'):'week'}, minutes)`;
+  $('lineGraphLabel').textContent=`Focus Trend (${isMonth?($('statsPeriodLabel')?.textContent||'month'):'week'})`;
 
   // Bar chart
   const today=todayStr(), maxM=Math.max(1,...days.map(d=>s.focusMinutesByDay[d.key]||0));
   $('statsWeekChart').innerHTML=days.map(d=>{
     const m=s.focusMinutesByDay[d.key]||0,pct=Math.min(110,(m/maxM)*110);
-    return `<div class="bar-chart-col">
+    const isFuture=d.key>today;
+    return `<div class="bar-chart-col${isFuture?' future-day':''}">
       <div class="bar-chart-bar${d.key===today?' highlight':''}" style="height:${Math.max(4,pct)}px"></div>
       <div class="bar-chart-label">${d.label}</div>
       <div class="bar-chart-val">${m>0?m+'m':''}</div>
@@ -1861,7 +1892,11 @@ function updateStats(){
 
 // ── MOBILE: Scroll-reveal for off-screen stats cards ──
 let _statsRevealObserver = null;
+let _statsRevealDone = false;
 function setupStatsScrollReveal(){
+  // If already set up during this stats visit, don't reset and replay
+  if(_statsRevealDone) return;
+
   // Disconnect previous observer to avoid duplication
   if(_statsRevealObserver){ _statsRevealObserver.disconnect(); _statsRevealObserver=null; }
 
@@ -1870,7 +1905,7 @@ function setupStatsScrollReveal(){
 
   const cards = Array.from(statsSection.querySelectorAll('.card'));
 
-  // Reset reveal state so re-entering stats page re-triggers animations
+  // Fresh entry — reset all cards so animations play from scratch
   cards.forEach(c=>{
     c.classList.remove('stats-scroll-reveal','revealed');
   });
@@ -1892,8 +1927,9 @@ function setupStatsScrollReveal(){
     });
 
     const toReveal = cards.filter(c=>c.classList.contains('stats-scroll-reveal'));
-    if(!toReveal.length) return;
+    if(!toReveal.length){ _statsRevealDone = true; return; }
 
+    let revealedCount = 0;
     _statsRevealObserver = new IntersectionObserver((entries)=>{
       entries.forEach(entry=>{
         if(entry.isIntersecting){
@@ -1902,16 +1938,21 @@ function setupStatsScrollReveal(){
           setTimeout(()=>{
             el.classList.remove('stats-scroll-reveal');
             el.classList.add('revealed');
+            revealedCount++;
+            if(revealedCount >= toReveal.length){ _statsRevealDone = true; }
             // If this is the line-graph card, trigger chart draw after reveal
             if(el.classList.contains('line-graph-card')){
               const isMonth=State.statsRange==='month';
               const todayKey2=todayStr();
+              const off2=State.statsOffset||0;
               let days2;
               if(isMonth){
-                const now=new Date(),y=now.getFullYear(),mo=now.getMonth(),dim=new Date(y,mo+1,0).getDate();
-                days2=Array.from({length:dim},(_,i)=>{const d=new Date(y,mo,i+1);return{key:dateStr(d),label:String(i+1)};}).filter(d=>d.key<=todayKey2);
+                const now=new Date();
+                const baseMonth=new Date(now.getFullYear(), now.getMonth()+off2, 1);
+                const y=baseMonth.getFullYear(),mo=baseMonth.getMonth(),dim=new Date(y,mo+1,0).getDate();
+                days2=Array.from({length:dim},(_,i)=>{const d=new Date(y,mo,i+1);return{key:dateStr(d),label:String(i+1)};});
               } else {
-                days2=getWeekDays(0).map((k,i)=>({key:k,label:['M','T','W','T','F','S','S'][i]}));
+                days2=getWeekDays(off2).map((k,i)=>({key:k,label:['M','T','W','T','F','S','S'][i]}));
               }
               drawLineGraph(days2, State.stats);
             }
@@ -1982,6 +2023,7 @@ function drawLineGraph(days, s) {
 
   const todayKeyLG  = todayStr();
   const lastDataIdx = days.reduce((last, d, i) => (vals[i] > 0 || d.key <= todayKeyLG ? i : last), 0);
+  const firstFutureIdx = days.findIndex(d => d.key > todayKeyLG);
 
   drawGrid();
 
@@ -2006,8 +2048,8 @@ function drawLineGraph(days, s) {
 
     ctx.beginPath();
     ctx.moveTo(xOf(0), yOf(vals[0]));
-    for (let i = 1; i < n; i++) ctx.lineTo(xOf(i), yOf(vals[i]));
-    ctx.lineTo(xOf(n - 1), pad.t + gh);
+    for (let i = 1; i <= lastDataIdx; i++) ctx.lineTo(xOf(i), yOf(vals[i]));
+    ctx.lineTo(xOf(lastDataIdx), pad.t + gh);
     ctx.lineTo(xOf(0), pad.t + gh);
     ctx.closePath();
     const areaGrad = ctx.createLinearGradient(0, pad.t, 0, pad.t + gh);
@@ -2015,11 +2057,10 @@ function drawLineGraph(days, s) {
     areaGrad.addColorStop(1, 'rgba(232,168,64,0)');
     ctx.fillStyle = areaGrad; ctx.fill();
 
-    // Colored segments
+    // Colored segments (past/present only)
     for (let i = 1; i < n; i++) {
       if (i > lastDataIdx) break;
       const x0 = xOf(i-1), y0 = yOf(vals[i-1]), x1 = xOf(i), y1 = yOf(vals[i]);
-      // partially draw the last segment within clip
       const diff  = vals[i] - vals[i-1];
       const color = diff > 0 ? '#00e676' : diff < 0 ? '#ff3d3d' : '#7a7d8e';
       ctx.save(); ctx.strokeStyle = color + '55'; ctx.lineWidth = 7; ctx.lineCap = 'round';
@@ -2031,11 +2072,29 @@ function drawLineGraph(days, s) {
 
     ctx.restore(); // remove clip
 
-    // Dots — only up to the revealed point
+    // Dashed future baseline — drawn outside clip so it spans full future range
+    if (firstFutureIdx !== -1) {
+      const baseY = pad.t + gh;
+      const futureStartIdx = firstFutureIdx > 0 ? firstFutureIdx - 1 : firstFutureIdx;
+      ctx.save();
+      ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 4]);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(xOf(futureStartIdx), baseY);
+      for (let i = futureStartIdx + 1; i < n; i++) ctx.lineTo(xOf(i), baseY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // Dots — past/present only; skip future empty days
     const bgColor = isDark ? '#181b24' : '#ffffff';
     vals.forEach((v, i) => {
-      if (i > lastDataIdx && v === 0) return;
-      if (xOf(i) > revealX + 6) return; // hide future dots
+      const isFutureDay = days[i].key > todayKeyLG;
+      if (isFutureDay && v === 0) return; // skip empty future dots
+      if (xOf(i) > revealX + 6) return; // hide during animation reveal
       const x = xOf(i), y = yOf(v);
       const prev  = i > 0 ? vals[i-1] : v, diff = v - prev;
       const color = diff > 0 ? '#00e676' : diff < 0 ? '#ff3d3d' : '#8b8fa8';
@@ -4167,41 +4226,77 @@ const Goals = {
     if (!matrix) return;
     const days = this.getMonthDates();
     const today = this.todayStr();
-
-    // Build header (always 31 cols; pad)
-    if (head) {
-      let h = '';
-      for (let i = 1; i <= 31; i++) h += `<span>${i <= days.length ? i : ''}</span>`;
-      head.innerHTML = h;
-    }
-
-    matrix.innerHTML = this._data.map(g => {
-      const cells = [];
-      for (let i = 0; i < 31; i++) {
-        if (i >= days.length) {
-          cells.push(`<div class="gm-cell" style="visibility:hidden"></div>`);
-          continue;
-        }
-        const d = days[i];
-        const e = g.log[d];
-        const cls = [
-          'gm-cell',
-          e ? e.status : '',
-          d > today ? 'future' : '',
-          d === today ? 'today' : ''
-        ].filter(Boolean).join(' ');
-        cells.push(`<div class="${cls}" title="${d}"></div>`);
-      }
-      return `<div class="gm-row" style="--gc:${g.color}">
-        <div class="gm-row-head">
-          <div class="gm-row-icon">${g.icon}</div>
-          <div class="gm-row-name">${escapeHtml(g.name)}</div>
-        </div>
-        <div class="gm-cells month">${cells.join('')}</div>
-      </div>`;
-    }).join('');
+    const isMobile = window.innerWidth < 768;
 
     if (label) label.textContent = new Date().toLocaleDateString(undefined,{month:'long',year:'numeric'});
+
+    if (isMobile) {
+      // Mobile: render a calendar card per goal (like the detail page)
+      if (head) head.style.display = 'none';
+      const dow = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+      const now = new Date();
+      const firstDow = new Date(now.getFullYear(), now.getMonth(), 1).getDay();
+      const offset = (firstDow + 6) % 7;
+
+      matrix.className = 'gm-mobile-month-list';
+      matrix.innerHTML = this._data.map(g => {
+        const dowHeader = dow.map(d => `<div class="gd-month-dow">${d}</div>`).join('');
+        let cells = '';
+        for (let i = 0; i < offset; i++) cells += `<div class="gd-month-cell empty"></div>`;
+        cells += days.map(d => {
+          const e = g.log[d];
+          const cls = [
+            'gd-month-cell',
+            e ? e.status : '',
+            d === today ? 'today' : ''
+          ].filter(Boolean).join(' ');
+          const dayNum = parseInt(d.split('-')[2], 10);
+          return `<div class="${cls}" title="${d}">${dayNum}</div>`;
+        }).join('');
+
+        return `<div class="gm-mobile-month-card" style="--gc:${g.color}">
+          <div class="gm-mobile-month-card-head">
+            <div class="gm-row-icon">${g.icon}</div>
+            <div class="gm-row-name">${escapeHtml(g.name)}</div>
+          </div>
+          <div class="gd-month gm-mobile-cal">${dowHeader}${cells}</div>
+        </div>`;
+      }).join('');
+    } else {
+      // Desktop: original horizontal matrix
+      if (head) {
+        head.style.display = '';
+        let h = '';
+        for (let i = 1; i <= 31; i++) h += `<span>${i <= days.length ? i : ''}</span>`;
+        head.innerHTML = h;
+      }
+      matrix.className = 'gm-matrix';
+      matrix.innerHTML = this._data.map(g => {
+        const cells = [];
+        for (let i = 0; i < 31; i++) {
+          if (i >= days.length) {
+            cells.push(`<div class="gm-cell" style="visibility:hidden"></div>`);
+            continue;
+          }
+          const d = days[i];
+          const e = g.log[d];
+          const cls = [
+            'gm-cell',
+            e ? e.status : '',
+            d > today ? 'future' : '',
+            d === today ? 'today' : ''
+          ].filter(Boolean).join(' ');
+          cells.push(`<div class="${cls}" title="${d}"></div>`);
+        }
+        return `<div class="gm-row" style="--gc:${g.color}">
+          <div class="gm-row-head">
+            <div class="gm-row-icon">${g.icon}</div>
+            <div class="gm-row-name">${escapeHtml(g.name)}</div>
+          </div>
+          <div class="gm-cells month">${cells.join('')}</div>
+        </div>`;
+      }).join('');
+    }
   },
 
   /* ── Detail page ───────────────────────────────────────────── */
