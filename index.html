@@ -541,9 +541,16 @@
     <section class="section" id="stats">
       <header class="section-header">
         <div><p class="section-label">Analytics</p><h1 class="section-title">Focus Statistics</h1></div>
-        <div class="stats-range-tabs">
-          <button class="range-tab active" data-range="week">Week</button>
-          <button class="range-tab" data-range="month">Month</button>
+        <div class="stats-header-controls">
+          <div class="stats-range-tabs">
+            <button class="range-tab active" data-range="week">Week</button>
+            <button class="range-tab" data-range="month">Month</button>
+          </div>
+          <div class="stats-period-nav" id="statsPeriodNav">
+            <button class="stats-nav-btn" id="statsNavPrev" title="Previous period">←</button>
+            <span class="stats-period-label" id="statsPeriodLabel">This Week</span>
+            <button class="stats-nav-btn" id="statsNavNext" title="Next period" disabled>→</button>
+          </div>
         </div>
       </header>
       <div class="stats-grid">
