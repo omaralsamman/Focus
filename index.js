@@ -75,6 +75,9 @@ const State = {
       hasEverRun:this.hasEverRun,
       rankSystemEnabled:this.rankSystemEnabled,
       rank:this.rank,
+      // Goals live in their own key but must travel through Supabase to sync cross-device
+      goals:(typeof Goals!=='undefined'?Goals._data:null)||[],
+      goalsTrash:(typeof Goals!=='undefined'?Goals._trash:null)||[],
     });
     // Write to ALL storage layers so at least one survives a mobile refresh
     try{ localStorage.setItem(key,data); }catch(e){}
@@ -154,8 +157,13 @@ function applyTheme(theme, light){
 
 // ── NAVIGATION ──
 function showSection(name){
-  // Reset stats scroll-reveal flag when leaving stats so re-entry plays animations fresh
-  if(name !== 'stats'){ _statsRevealDone = false; }
+  // Reset stats scroll-reveal flag only when actually leaving stats (stats section was active)
+  const statsWasActive = document.getElementById('stats')?.classList.contains('active');
+  if(name !== 'stats' && statsWasActive){
+    _statsRevealDone = false;
+    _statsRevealSetup = false;
+    if(_statsRevealObserver){ _statsRevealObserver.disconnect(); _statsRevealObserver=null; }
+  }
   $$('.section').forEach(s=>s.classList.remove('active'));
   $$('.nav-item,.mobile-nav-item').forEach(n=>n.classList.remove('active'));
   const sec=document.getElementById(name); if(sec) sec.classList.add('active');
@@ -1893,11 +1901,13 @@ function updateStats(){
 // ── MOBILE: Scroll-reveal for off-screen stats cards ──
 let _statsRevealObserver = null;
 let _statsRevealDone = false;
+let _statsRevealSetup = false; // true once observer is live for this visit
 function setupStatsScrollReveal(){
-  // If already set up during this stats visit, don't reset and replay
-  if(_statsRevealDone) return;
+  // If already set up OR fully revealed during this stats visit, bail out immediately.
+  // This prevents scroll/touch-triggered updateStats() calls from replaying animations.
+  if(_statsRevealDone || _statsRevealSetup) return;
 
-  // Disconnect previous observer to avoid duplication
+  // Disconnect any stale observer from a previous visit
   if(_statsRevealObserver){ _statsRevealObserver.disconnect(); _statsRevealObserver=null; }
 
   const statsSection=$('stats');
@@ -1927,9 +1937,10 @@ function setupStatsScrollReveal(){
     });
 
     const toReveal = cards.filter(c=>c.classList.contains('stats-scroll-reveal'));
-    if(!toReveal.length){ _statsRevealDone = true; return; }
+    if(!toReveal.length){ _statsRevealDone = true; _statsRevealSetup = true; return; }
 
     let revealedCount = 0;
+    _statsRevealSetup = true; // mark that observer is now live — block any further calls
     _statsRevealObserver = new IntersectionObserver((entries)=>{
       entries.forEach(entry=>{
         if(entry.isIntersecting){
@@ -1939,7 +1950,11 @@ function setupStatsScrollReveal(){
             el.classList.remove('stats-scroll-reveal');
             el.classList.add('revealed');
             revealedCount++;
-            if(revealedCount >= toReveal.length){ _statsRevealDone = true; }
+            if(revealedCount >= toReveal.length){
+              _statsRevealDone = true;
+              // Fully done — disconnect observer so no future scroll events fire
+              if(_statsRevealObserver){ _statsRevealObserver.disconnect(); _statsRevealObserver=null; }
+            }
             // If this is the line-graph card, trigger chart draw after reveal
             if(el.classList.contains('line-graph-card')){
               const isMonth=State.statsRange==='month';
@@ -3529,6 +3544,18 @@ const SupaSync = {
       if(s.hasEverRun !== undefined) State.hasEverRun = s.hasEverRun;
       if(s.rankSystemEnabled !== undefined) State.rankSystemEnabled = s.rankSystemEnabled;
       if(s.rank)          State.rank          = s.rank;
+      // Goals are stored in their own module — restore them from cloud data if present
+      if(s.goals && Array.isArray(s.goals) && typeof Goals !== 'undefined'){
+        // Merge: cloud wins for any goal by id, but keep local-only goals too
+        const cloudIds = s.goals.map(g=>g.id);
+        const localOnly = Goals._data.filter(g=>!cloudIds.includes(g.id));
+        Goals._data = [...s.goals, ...localOnly];
+        Goals.save(); // write merged result back to localStorage
+      }
+      if(s.goalsTrash && Array.isArray(s.goalsTrash) && typeof Goals !== 'undefined'){
+        Goals._trash = s.goalsTrash;
+        Goals.save();
+      }
       // Persist locally too
       State.save();
       // Re-render everything with correct function names
@@ -3540,6 +3567,13 @@ const SupaSync = {
       try{ renderPlanner(); }catch(e){}
       if(document.getElementById('stats').classList.contains('active')){
         try{ updateStats(); }catch(e){}
+      }
+      // Re-render goals if the section is active or always to keep data fresh
+      if(typeof Goals !== 'undefined'){
+        try{ Goals._updateTrashBadge(); }catch(e){}
+        if(document.getElementById('goals')?.classList.contains('active')){
+          try{ Goals.render(); }catch(e){}
+        }
       }
       toast('Data synced from cloud ☁️', 'success');
     }catch(e){ console.warn('[SupaSync] pull error', e); }
@@ -3762,12 +3796,20 @@ const Goals = {
       deletedAt: g.deletedAt || Date.now(),
     }));
   },
+  _saving: false, // re-entrancy guard
   save(){
     const s = JSON.stringify(this._data);
     try { localStorage.setItem(this._storageKey, s); } catch(e){}
     try { sessionStorage.setItem(this._storageKey, s); } catch(e){}
     const t = JSON.stringify(this._trash);
     try { localStorage.setItem(this._trashKey, t); } catch(e){}
+    // Push goals to Supabase via State.save() so they sync cross-device.
+    // _saving guard prevents the mutual Goals.save()<->State.save() loop.
+    if(!this._saving){
+      this._saving = true;
+      try { if(typeof State !== 'undefined' && State.save) State.save(); } catch(e){}
+      this._saving = false;
+    }
   },
 
   /* ── Date helpers ──────────────────────────────────────────── */
