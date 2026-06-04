@@ -63,6 +63,16 @@ const State = {
       if(s.hasEverRun !== undefined) this.hasEverRun = s.hasEverRun;
       if(s.rankSystemEnabled !== undefined) this.rankSystemEnabled = s.rankSystemEnabled;
       if(s.rank) this.rank = s.rank;
+      // Restore goals from the combined state blob (written by State.save)
+      if(s.goals && Array.isArray(s.goals) && typeof Goals !== 'undefined'){
+        Goals._data = s.goals.map(g=>({
+          id:String(g.id||Date.now()), name:g.name||'Untitled', icon:g.icon||'🎯',
+          color:g.color||GOAL_COLORS[0], category:g.category||'health', desc:g.desc||'', log:g.log||{}
+        }));
+      }
+      if(s.goalsTrash && Array.isArray(s.goalsTrash) && typeof Goals !== 'undefined'){
+        Goals._trash = s.goalsTrash;
+      }
     }catch(e){ console.warn('State apply error',e); }
   },
   save(){
@@ -3550,11 +3560,13 @@ const SupaSync = {
         const cloudIds = s.goals.map(g=>g.id);
         const localOnly = Goals._data.filter(g=>!cloudIds.includes(g.id));
         Goals._data = [...s.goals, ...localOnly];
-        Goals.save(); // write merged result back to localStorage
+        // Write merged result to localStorage directly (avoid triggering push loop)
+        try{ localStorage.setItem(Goals._storageKey, JSON.stringify(Goals._data)); }catch(e){}
+        try{ sessionStorage.setItem(Goals._storageKey, JSON.stringify(Goals._data)); }catch(e){}
       }
       if(s.goalsTrash && Array.isArray(s.goalsTrash) && typeof Goals !== 'undefined'){
         Goals._trash = s.goalsTrash;
-        Goals.save();
+        try{ localStorage.setItem(Goals._trashKey, JSON.stringify(Goals._trash)); }catch(e){}
       }
       // Persist locally too
       State.save();
@@ -3568,9 +3580,10 @@ const SupaSync = {
       if(document.getElementById('stats').classList.contains('active')){
         try{ updateStats(); }catch(e){}
       }
-      // Re-render goals if the section is active or always to keep data fresh
+      // Re-render goals — always update hero data, full render only if section visible
       if(typeof Goals !== 'undefined'){
         try{ Goals._updateTrashBadge(); }catch(e){}
+        try{ Goals._renderHero(); }catch(e){}
         if(document.getElementById('goals')?.classList.contains('active')){
           try{ Goals.render(); }catch(e){}
         }
@@ -3761,20 +3774,26 @@ const Goals = {
 
   /* ── Persistence ───────────────────────────────────────────── */
   load(){
-    try {
-      const raw = localStorage.getItem(this._storageKey);
-      if (raw) this._data = JSON.parse(raw) || [];
-    } catch(e){}
-    if (!this._data.length) {
+    // If State.load() already populated _data (from focus_state_v3), keep it.
+    // Only read from the legacy goals-specific key if we still have nothing.
+    if(!this._data.length){
       try {
-        const raw = sessionStorage.getItem(this._storageKey);
+        const raw = localStorage.getItem(this._storageKey);
         if (raw) this._data = JSON.parse(raw) || [];
       } catch(e){}
+      if (!this._data.length) {
+        try {
+          const raw = sessionStorage.getItem(this._storageKey);
+          if (raw) this._data = JSON.parse(raw) || [];
+        } catch(e){}
+      }
     }
-    try {
-      const rawT = localStorage.getItem(this._trashKey);
-      if (rawT) this._trash = JSON.parse(rawT) || [];
-    } catch(e){}
+    if(!this._trash.length){
+      try {
+        const rawT = localStorage.getItem(this._trashKey);
+        if (rawT) this._trash = JSON.parse(rawT) || [];
+      } catch(e){}
+    }
     // shape guard
     this._data = (this._data || []).map(g => ({
       id: String(g.id || Date.now()),
@@ -4584,7 +4603,9 @@ function escapeHtml(s){
 /* ── Wire UI ─────────────────────────────────────────────────── */
 (function wireGoals(){
   // Load any saved data immediately so first paint is correct
-  try { Goals.load(); } catch(e){}
+  // Use _saving guard so the initial load doesn't push stale data to Supabase
+  // (SupaSync.pull() will do the authoritative cloud merge shortly after auth fires)
+  try { Goals._saving = true; Goals.load(); Goals._saving = false; } catch(e){ Goals._saving = false; }
   Goals._updateTrashBadge();
 
   const addBtn   = document.getElementById('addGoalBtn');
