@@ -1240,7 +1240,12 @@ function showMonthView(){
   $('dayZoomView').style.display='none';
   $('monthlyView').style.display='block';
   $('zoomBackBtn').style.display='none';
-  $('plannerNav').style.display='none';
+  $('plannerNav').style.display='flex';
+  // Disable "next" button only if already on current month and no future navigation
+  const _nowForNav=new Date();
+  const _baseForNav=new Date(_nowForNav.getFullYear(), _nowForNav.getMonth()+State.planner.weekOffset, 1);
+  const _isCurrentMonth=_baseForNav.getFullYear()===_nowForNav.getFullYear()&&_baseForNav.getMonth()===_nowForNav.getMonth();
+  $('nextWeek').disabled = false; // allow future months
   const now=new Date();
   const baseMonth=new Date(now.getFullYear(), now.getMonth()+State.planner.weekOffset, 1);
   const y=baseMonth.getFullYear(), mo=baseMonth.getMonth();
