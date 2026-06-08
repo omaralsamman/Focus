@@ -1883,14 +1883,15 @@ function updateStats(){
   },0);
   const streakPts=Math.round(s.currentStreak*3);
   const habitPts=(()=>{ const HP={done:15,rest:3,miss:-10}; return (Goals._data||[]).reduce((sum,g)=>sum+Object.values(g.log||{}).reduce((s2,e)=>s2+(HP[e.status]||0),0),0); })();
-  const score=taskPts+sessionPts+blockPts+streakPts+Math.max(0,habitPts);
+  // Efficiency ring shows the same rank points as the rank card
+  const rankPts=Math.max(0,State.rank?.points||0);
   const ringMax=500;
   const circ=2*Math.PI*80;
-  const fillPct=Math.min(1,score/ringMax);
+  const fillPct=Math.min(1,rankPts/ringMax);
   $('effProgress').style.strokeDashoffset=circ-(circ*fillPct);
-  $('efficiencyValue').textContent=score>0?score:'—';
+  $('efficiencyValue').textContent=rankPts>0?rankPts:'—';
   const descs={0:'Complete tasks and sessions to build your score.',50:'Good start! Keep the momentum going.',150:"Nice progress. You're building solid habits.",300:"Strong performance. Your focus is sharpening.",500:"Excellent! You're operating at a high level.",800:"Elite. You've mastered time and focus.",1200:"Legendary. Exceptional consistency and output."};
-  const dk=Object.keys(descs).map(Number).filter(k=>score>=k).pop()||0;
+  const dk=Object.keys(descs).map(Number).filter(k=>rankPts>=k).pop()||0;
   const breakdown=`${taskPts} tasks · ${sessionPts} sessions · ${blockPts} blocks · ${streakPts} streak · ${Math.max(0,habitPts)} habits`;
   $('efficiencyDesc').innerHTML=descs[dk]+'<br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:0.5px">'+breakdown+'</span>';
 
@@ -2592,7 +2593,6 @@ function updateRankCard(){
   $('rankBadgeIcon').innerHTML=rank.icon;
   $('rankName').textContent=rank.name;
   $('rankTitle').textContent=rank.title;
-  $('rankPtsDisplay').textContent=pts.toLocaleString()+' pts';
 
   // Progress bar
   if(nextRank){
