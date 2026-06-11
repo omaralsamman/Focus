@@ -241,8 +241,12 @@
       <div class="gd-row">
         <div class="gd-pane">
           <div class="gd-pane-head">
-            <div class="gd-pane-title">Log today</div>
-            <div class="gd-pane-meta" id="gdTodayDate">—</div>
+            <div class="gd-pane-title">Log day</div>
+            <div class="gd-log-date-nav">
+              <button class="gd-date-nav-btn" id="gdDatePrev" type="button" title="Previous day">←</button>
+              <span class="gd-pane-meta" id="gdTodayDate">—</span>
+              <button class="gd-date-nav-btn" id="gdDateNext" type="button" title="Next day" disabled>→</button>
+            </div>
           </div>
           <div class="gd-log-buttons">
             <button class="gd-log-btn done" id="gdBtnDone" type="button">
@@ -256,7 +260,7 @@
             </button>
           </div>
           <input type="text" id="gdNoteInput" class="gd-note"
-                 placeholder="A note for today (optional)…" maxlength="140" />
+                 placeholder="A note for this day (optional)…" maxlength="140" />
         </div>
 
         <div class="gd-pane">
