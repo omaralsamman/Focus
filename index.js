@@ -191,7 +191,7 @@ function showSection(name){
   if(name==='planner') renderPlanner();
   if(name==='tasks') renderTaskList();
   if(name==='notes') renderNotesList();
-  if(name==='goals') { if(typeof Goals !== 'undefined') Goals.render(); }
+  if(name==='goals') { if(typeof Goals !== 'undefined') { Goals.autoFillAllMissed(); Goals.render(); } }
   if(name==='goal-detail') { /* rendered by Goals.renderDetail */ }
 }
 $$('.nav-item').forEach(i=>i.addEventListener('click',()=>showSection(i.dataset.section)));
@@ -3772,6 +3772,7 @@ const Goals = {
   _trash: [],
   _activeId: null,
   _view: 'cards', // cards | week | month
+  _logOffset: 0,   // 0 = today, -1 = yesterday, etc.
   _storageKey: 'focus_goals_v1',
   _trashKey: 'focus_goals_trash_v1',
 
@@ -3840,6 +3841,7 @@ const Goals = {
   _pad(n){ return String(n).padStart(2,'0'); },
   toKey(d){ return `${d.getFullYear()}-${this._pad(d.getMonth()+1)}-${this._pad(d.getDate())}`; },
   todayStr(){ const n = new Date(); n.setHours(0,0,0,0); return this.toKey(n); },
+  logDateStr(){ const n = new Date(); n.setHours(0,0,0,0); n.setDate(n.getDate() + (this._logOffset||0)); return this.toKey(n); },
   formatDate(str){
     const d = new Date(str+'T00:00:00');
     return d.toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
@@ -3862,6 +3864,33 @@ const Goals = {
     return Array.from({length: days}, (_,i) => {
       const d = new Date(y, m, i+1); return this.toKey(d);
     });
+  },
+
+  /* ── Auto-fill missed days ────────────────────────────────── */
+  // For a single habit: stamp every unlogged past day (back to habit creation
+  // or up to 90 days max) as 'miss'. Silently skips future and already-logged days.
+  autoFillMissed(g){
+    const today = this.todayStr();
+    const d = new Date(today+'T00:00:00');
+    let changed = false;
+    // walk backward up to 90 days (or until the habit has no earlier log to anchor to)
+    for (let i = 1; i <= 90; i++) {
+      d.setDate(d.getDate() - 1);
+      const k = this.toKey(d);
+      if (!g.log[k]) {
+        g.log[k] = { status: 'miss', note: '' };
+        changed = true;
+      }
+      // stop once we hit a day that was already logged (habit's history starts there)
+      // actually we just go back 90 days max — simple and predictable
+    }
+    return changed;
+  },
+  // Run autoFillMissed on every habit, save if anything changed
+  autoFillAllMissed(){
+    let any = false;
+    this._data.forEach(g => { if (this.autoFillMissed(g)) any = true; });
+    if (any) this.save();
   },
 
   /* ── Streaks ───────────────────────────────────────────────── */
@@ -4088,7 +4117,7 @@ const Goals = {
 
   logToday(status){
     const g = this.getById(this._activeId); if (!g) return;
-    const k = this.todayStr();
+    const k = this.logDateStr();
     const note = document.getElementById('gdNoteInput')?.value || '';
     const changed = this._applyStatus(g, k, status);
     if (!changed) {
@@ -4200,7 +4229,7 @@ const Goals = {
       card.className = 'goal-card';
       card.style.setProperty('--gc', g.color);
       card.style.animationDelay = `${Math.min(idx, 8) * 0.05}s`;
-      card.onclick = () => this.renderDetail(g.id);
+      card.onclick = () => { this._logOffset = 0; this.renderDetail(g.id); };
 
       const ribbon = weekDates.map((d, i) => {
         const e = g.log[d];
@@ -4369,9 +4398,11 @@ const Goals = {
   renderDetail(id, flashStatus){
     this._activeId = id;
     const g = this.getById(id); if (!g) return;
+    if (this.autoFillMissed(g)) this.save();
     showSection('goal-detail');
 
     const today = this.todayStr();
+    const logDate = this.logDateStr();
     const weekDates = this.getWeekDates();
     const monthDates = this.getMonthDates();
     const streaks = this.calcStreak(g.log);
@@ -4397,22 +4428,34 @@ const Goals = {
     setText('gdRest', rest);
     setText('gdMiss', miss);
 
-    setText('gdTodayDate', this.formatDate(today));
+    // Date label: show "Today" suffix when on current day
+    const isToday = (logDate === today);
+    const dateLabelFull = this.formatDate(logDate);
+    setText('gdTodayDate', isToday ? `${dateLabelFull} — Today` : dateLabelFull);
     const f = k => new Date(k+'T00:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'});
     setText('gdWeekRange', `${f(weekDates[0])} — ${f(weekDates[6])}`);
     setText('gdMonthLabel', new Date().toLocaleDateString(undefined,{month:'long',year:'numeric'}));
 
-    // Buttons / note
-    const todayEntry = g.log[today];
+    // Date nav buttons
+    const prevBtn = document.getElementById('gdDatePrev');
+    const nextBtn = document.getElementById('gdDateNext');
+    if (prevBtn) prevBtn.onclick = () => { this._logOffset = (this._logOffset||0) - 1; this.renderDetail(id); };
+    if (nextBtn) {
+      nextBtn.disabled = isToday;
+      nextBtn.onclick = () => { if ((this._logOffset||0) < 0) { this._logOffset = (this._logOffset||0) + 1; this.renderDetail(id); } };
+    }
+
+    // Buttons / note — use logDate (may be a past day)
+    const logEntry = g.log[logDate];
     ['gdBtnDone','gdBtnRest','gdBtnMiss'].forEach(bid => {
       const b = document.getElementById(bid); if (b) b.classList.remove('is-active');
     });
-    if (todayEntry) {
+    if (logEntry) {
       const map = { done:'gdBtnDone', rest:'gdBtnRest', miss:'gdBtnMiss' };
-      document.getElementById(map[todayEntry.status])?.classList.add('is-active');
+      document.getElementById(map[logEntry.status])?.classList.add('is-active');
     }
     const note = document.getElementById('gdNoteInput');
-    if (note) note.value = todayEntry?.note || '';
+    if (note) note.value = logEntry?.note || '';
 
     // Wire log + delete buttons (rebind each render is fine; small surface)
     document.getElementById('gdBtnDone').onclick = () => this.logToday('done');
@@ -4425,26 +4468,40 @@ const Goals = {
     const edit = document.getElementById('gdEditBtn');
     if (edit) edit.onclick = () => this.openEditModal(id);
 
-    // Week visualisation
+    // Week visualisation — cells are clickable (past + today only)
     const weekEl = document.getElementById('gdWeek');
     if (weekEl) {
       const dn = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
       weekEl.innerHTML = weekDates.map((d, i) => {
         const e = g.log[d];
+        const isFuture = d > today;
+        const isSelected = d === logDate;
         const cls = [
           'dot',
           e ? e.status : '',
           d === today ? 'today' : '',
+          isSelected ? 'selected' : '',
+          isFuture ? 'future' : '',
         ].filter(Boolean).join(' ');
         const dayNum = parseInt(d.split('-')[2], 10);
         return `<div class="gd-week-cell">
           <span class="lbl">${dn[i]}</span>
-          <div class="${cls}" title="${d}"><span class="num">${dayNum}</span></div>
+          <div class="${cls}" title="${d}" data-date="${d}"><span class="num">${dayNum}</span></div>
         </div>`;
       }).join('');
+      weekEl.querySelectorAll('.dot[data-date]').forEach(el => {
+        const d = el.dataset.date;
+        if (d > today) return;
+        el.style.cursor = 'pointer';
+        el.onclick = () => {
+          const diffMs = new Date(d+'T00:00:00') - new Date(today+'T00:00:00');
+          this._logOffset = Math.round(diffMs / 86400000);
+          this.renderDetail(id);
+        };
+      });
     }
 
-    // Month grid (with DOW header + leading blanks)
+    // Month grid (with DOW header + leading blanks) — cells are clickable
     const monthEl = document.getElementById('gdMonth');
     if (monthEl) {
       const dow = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -4455,15 +4512,29 @@ const Goals = {
       for (let i = 0; i < offset; i++) html += `<div class="gd-month-cell empty"></div>`;
       html += monthDates.map(d => {
         const e = g.log[d];
+        const isFuture = d > today;
+        const isSelected = d === logDate;
         const cls = [
           'gd-month-cell',
           e ? e.status : '',
-          d === today ? 'today' : ''
+          d === today ? 'today' : '',
+          isSelected ? 'selected' : '',
+          isFuture ? 'future' : '',
         ].filter(Boolean).join(' ');
         const dayNum = parseInt(d.split('-')[2], 10);
-        return `<div class="${cls}" title="${d}">${dayNum}</div>`;
+        return `<div class="${cls}" title="${d}" data-date="${d}">${dayNum}</div>`;
       }).join('');
       monthEl.innerHTML = html;
+      monthEl.querySelectorAll('.gd-month-cell[data-date]').forEach(el => {
+        const d = el.dataset.date;
+        if (d > today) return;
+        el.style.cursor = 'pointer';
+        el.onclick = () => {
+          const diffMs = new Date(d+'T00:00:00') - new Date(today+'T00:00:00');
+          this._logOffset = Math.round(diffMs / 86400000);
+          this.renderDetail(id);
+        };
+      });
     }
 
     // History
@@ -4493,12 +4564,15 @@ const Goals = {
       }
     }
 
-    // Note input → autosave
+    // Note input → autosave (always saves to currently selected log date)
+    if (note) {
+      note._wired = false; // re-wire each render so it captures current logDate
+    }
     if (note && !note._wired) {
       note._wired = true;
       note.addEventListener('input', () => {
         const cur = this.getById(this._activeId);
-        const k = this.todayStr();
+        const k = this.logDateStr();
         if (cur?.log[k]) { cur.log[k].note = note.value; this.save(); }
       });
     }
