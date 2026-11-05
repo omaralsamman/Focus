@@ -32,17 +32,45 @@ const State = {
   async load(){
     if(exampleMode) return;
     const key='focus_state_v3';
-    let s={};
-    // 1st: localStorage
-    try{ const raw=localStorage.getItem(key); if(raw) s=JSON.parse(raw); }catch(e){}
-    // 2nd: sessionStorage (survives soft reloads on mobile where localStorage fails)
-    if(!s||!Object.keys(s).length){
-      try{ const raw=sessionStorage.getItem(key); if(raw) s=JSON.parse(raw); }catch(e){}
+    const read = async (getter) => {
+      try{
+        const raw = await getter();
+        if(!raw) return null;
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if(!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+        return parsed;
+      }catch(e){ return null; }
+    };
+    const local = await read(() => localStorage.getItem(key));
+    const session = await read(() => sessionStorage.getItem(key));
+    const idb = await read(() => this._idbGet(key));
+    // The old first-run seed wrote these four tasks and then set hasEverRun.
+    // A copy that is only that seed loses to any other saved tasks or goals.
+    const starterNames = [
+      "Review weekly goals and plan today's priorities",
+      "Complete Chapter 4 of Deep Work",
+      "Morning workout — 30 min",
+      "Reply to client emails",
+    ];
+    const rank = (s) => {
+      if(!s) return -1;
+      const tasks = Array.isArray(s.tasks) ? s.tasks : [];
+      const goals = Array.isArray(s.goals) ? s.goals : [];
+      const notes = Array.isArray(s.notes) ? s.notes : [];
+      const blocks = (s.planner && typeof s.planner === 'object' && !Array.isArray(s.planner)) ? Object.keys(s.planner).length : 0;
+      const starter = tasks.length === starterNames.length && tasks.every((t,i) => t && t.name === starterNames[i]);
+      const welcomeOnly = notes.length === 0 || (notes.length === 1 && notes[0] && notes[0].title === 'Welcome to FOCUS');
+      // Only the untouched first-run sample is disposable. Extra notes, goals, or planner blocks keep the copy.
+      if(starter && !goals.length && welcomeOnly && !blocks) return 0;
+      if(!tasks.length && !goals.length && !notes.length && !blocks) return 1;
+      return 100 + tasks.length * 10 + goals.length * 20 + notes.length * 5 + blocks;
+    };
+    const best = [local, session, idb].filter(Boolean).sort((a,b) => rank(b) - rank(a))[0] || {};
+    this._loaded = best;
+    if(best !== local && rank(best) > rank(local)){
+      try{ localStorage.setItem(key, JSON.stringify(best)); }catch(e){}
     }
-    // 3rd: IndexedDB — works on iOS Safari localhost reliably
-    if(!s||!Object.keys(s).length){
-      try{ const raw=await this._idbGet(key); if(raw) s=JSON.parse(raw); }catch(e){}
-    }
+    const s = best;
     try{
       if(s.tasks) this.tasks=s.tasks;
       if(s.taskTrash) this.taskTrash=s.taskTrash;
@@ -63,17 +91,6 @@ const State = {
       if(s.hasEverRun !== undefined) this.hasEverRun = s.hasEverRun;
       if(s.rankSystemEnabled !== undefined) this.rankSystemEnabled = s.rankSystemEnabled;
       if(s.rank) this.rank = s.rank;
-      // Restore goals from the combined state blob (written by State.save)
-      if(s.goals && Array.isArray(s.goals) && typeof Goals !== 'undefined'){
-        Goals._data = s.goals.map(g=>({
-          id:String(g.id||Date.now()), name:g.name||'Untitled', icon:g.icon||'🎯',
-          color:g.color||GOAL_COLORS[0], category:g.category||'health', desc:g.desc||'', log:g.log||{},
-          qualitySpec:!!g.qualitySpec
-        }));
-      }
-      if(s.goalsTrash && Array.isArray(s.goalsTrash) && typeof Goals !== 'undefined'){
-        Goals._trash = s.goalsTrash;
-      }
     }catch(e){ console.warn('State apply error',e); }
   },
   // Plain-object copy of everything that gets persisted / exported
@@ -3053,8 +3070,19 @@ document.getElementById('resetAllDataBtn')?.addEventListener('click', async () =
 const EXPORT_FORMAT = 'focus-export';
 const EXPORT_VERSION = 1;
 
+// Goals is declared later in this file. State.load() runs before that
+// declaration, so goal lists are applied here, once Goals exists.
+function adoptStoredGoals(){
+  if(exampleMode || typeof Goals === 'undefined') return;
+  const loaded = State._loaded || {};
+  if(!Goals._data.length && Array.isArray(loaded.goals) && loaded.goals.length) Goals._data = loaded.goals;
+  if(!Goals._trash.length && Array.isArray(loaded.goalsTrash) && loaded.goalsTrash.length) Goals._trash = loaded.goalsTrash;
+  try{ Goals.load(); }catch(e){}
+}
+
 function exportUserData(){
   try{
+    adoptStoredGoals();
     const payload = {
       format: EXPORT_FORMAT,
       version: EXPORT_VERSION,
@@ -3194,6 +3222,7 @@ document.getElementById('exportDataBtn')?.addEventListener('click', exportUserDa
 // ── INIT ──
 (async()=>{
   await State.load();
+  adoptStoredGoals();
   if(exampleMode){
     seedExampleData();
     $('exampleWorkspaceBanner').hidden=false;
