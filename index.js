@@ -3,6 +3,8 @@
    All fixes + new features
    ═══════════════════════════════════════════════ */
 
+const exampleMode = new URLSearchParams(location.search).get('example') === '1';
+
 // ── STATE ──
 const State = {
   pomo: {
@@ -17,9 +19,9 @@ const State = {
   blockTrash:[],
   stats:{ focusMinutesByDay:{}, totalPomodoros:0, bestStreak:0, currentStreak:0, lastFocusDay:'', missedTasks:[], doneOnTimeTasks:[] },
   notes:[], noteTrash:[], activeNoteId:null,
-  theme:'midnight', lightMode:false,
+  theme:'midnight', lightMode:true, classicLook:false,
   statsRange:'week', statsOffset:0, zoomedDay:null,
-  hasEverRun:false,
+  hasEverRun:true,
   rankSystemEnabled: true,
   rank: { points: 0, events: [] },
 
@@ -28,6 +30,7 @@ const State = {
   _idbSet(key,val){ return new Promise(resolve=>{ try{ const req=indexedDB.open('focus_db',1); req.onupgradeneeded=e=>e.target.result.createObjectStore('kv'); req.onsuccess=e=>{ try{ const tx=e.target.result.transaction('kv','readwrite'); tx.objectStore('kv').put(val,key); tx.oncomplete=()=>resolve(true); tx.onerror=()=>resolve(false); }catch(_){resolve(false);} }; req.onerror=()=>resolve(false); }catch(_){resolve(false);} }); },
 
   async load(){
+    if(exampleMode) return;
     const key='focus_state_v3';
     let s={};
     // 1st: localStorage
@@ -39,10 +42,6 @@ const State = {
     // 3rd: IndexedDB — works on iOS Safari localhost reliably
     if(!s||!Object.keys(s).length){
       try{ const raw=await this._idbGet(key); if(raw) s=JSON.parse(raw); }catch(e){}
-    }
-    // 4th: window.storage (Claude artifact environment only)
-    if(!s||!Object.keys(s).length){
-      try{ if(typeof window.storage!=='undefined'){ const result=await window.storage.get(key); if(result&&result.value) s=JSON.parse(result.value); } }catch(e){}
     }
     try{
       if(s.tasks) this.tasks=s.tasks;
@@ -58,6 +57,7 @@ const State = {
       if(s.notes) this.notes=s.notes;
       if(s.noteTrash) this.noteTrash=s.noteTrash;
       if(s.theme) this.theme=s.theme;
+      this.classicLook = s.classicLook === true;
       if(s.lightMode!==undefined) this.lightMode=s.lightMode;
       if(s.customColumns) this.customColumns=[];
       if(s.hasEverRun !== undefined) this.hasEverRun = s.hasEverRun;
@@ -67,7 +67,8 @@ const State = {
       if(s.goals && Array.isArray(s.goals) && typeof Goals !== 'undefined'){
         Goals._data = s.goals.map(g=>({
           id:String(g.id||Date.now()), name:g.name||'Untitled', icon:g.icon||'🎯',
-          color:g.color||GOAL_COLORS[0], category:g.category||'health', desc:g.desc||'', log:g.log||{}
+          color:g.color||GOAL_COLORS[0], category:g.category||'health', desc:g.desc||'', log:g.log||{},
+          qualitySpec:!!g.qualitySpec
         }));
       }
       if(s.goalsTrash && Array.isArray(s.goalsTrash) && typeof Goals !== 'undefined'){
@@ -75,27 +76,29 @@ const State = {
       }
     }catch(e){ console.warn('State apply error',e); }
   },
-  save(){
-    const key='focus_state_v3';
-    const data=JSON.stringify({
+  // Plain-object copy of everything that gets persisted / exported
+  snapshot(){
+    return {
       tasks:this.tasks, taskTrash:this.taskTrash||[], planner:this.planner.blocks, blockTrash:this.blockTrash||[], stats:this.stats,
       pomo:{durations:this.pomo.durations}, notes:this.notes, noteTrash:this.noteTrash||[],
-      theme:this.theme, lightMode:this.lightMode,
+      theme:this.theme, lightMode:this.lightMode, classicLook:this.classicLook,
       customColumns:this.customColumns||[],
       hasEverRun:this.hasEverRun,
       rankSystemEnabled:this.rankSystemEnabled,
       rank:this.rank,
-      // Goals live in their own key but must travel through Supabase to sync cross-device
+      // Include habits in exports and the combined local snapshot
       goals:(typeof Goals!=='undefined'?Goals._data:null)||[],
       goalsTrash:(typeof Goals!=='undefined'?Goals._trash:null)||[],
-    });
+    };
+  },
+  save(){
+    if(exampleMode) return;
+    const key='focus_state_v3';
+    const data=JSON.stringify(this.snapshot());
     // Write to ALL storage layers so at least one survives a mobile refresh
     try{ localStorage.setItem(key,data); }catch(e){}
     try{ sessionStorage.setItem(key,data); }catch(e){}
     this._idbSet(key,data); // async, fire-and-forget
-    try{ if(typeof window.storage!=='undefined') window.storage.set(key,data); }catch(e){}
-    // Push to Supabase cloud if signed in
-    SupaSync.push(data);
   }
 };
 
@@ -129,6 +132,21 @@ function playDone(){
   }catch(e){}
 }
 
+function applyAppearance(){
+  const classic = State.classicLook;
+  $('modernAppearance').media = classic ? 'not all' : 'all';
+  $('classicAppearance').media = classic ? 'all' : 'not all';
+  const button = $('settingsClassicLookBtn');
+  button.setAttribute('aria-pressed', String(classic));
+  button.textContent = classic ? 'Classic on' : 'Classic off';
+}
+
+$('settingsClassicLookBtn').addEventListener('click', () => {
+  State.classicLook = !State.classicLook;
+  applyAppearance();
+  State.save();
+});
+
 // ── THEME ──
 function applyTheme(theme, light){
   const isMobile = window.innerWidth <= 768;
@@ -138,19 +156,25 @@ function applyTheme(theme, light){
   document.documentElement.classList.remove('light-mode');
   // Sync settings page controls
   const sSel=$('settingsThemePicker');
-  if(sSel) sSel.querySelectorAll('.tswatch').forEach(b => b.classList.toggle('active', b.dataset.theme === theme));
+  if(sSel) sSel.querySelectorAll('.tswatch').forEach(button => {
+    const selected=button.dataset.theme === theme;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
   const sBtn=$('settingsLightModeBtn'); if(sBtn) sBtn.textContent=light?'☀ Light':'☽ Dark';
   // Sync the Altayer-style toggle (Altayer: checked=dark, unchecked=light)
   const chk=document.getElementById('darkmode-switch');
   if(chk) chk.checked=!light;   // dark mode = checked, light mode = unchecked
   // Sync desktop label via .is-dark class (can't use CSS :checked sibling across DOM)
   const desktopLbl=document.querySelector('.desktop-focus-toggle');
-  if(desktopLbl) desktopLbl.classList.toggle('is-dark', !light);
+  if(desktopLbl){
+    desktopLbl.classList.toggle('is-dark', !light);
+    desktopLbl.setAttribute('aria-pressed', String(!light));
+  }
   State.theme=theme; State.lightMode=!!light;
 
   // On mobile, defer storage writes + stats update so they don't compete with
-  // the repaint. State.save() hits localStorage, sessionStorage, IndexedDB
-  // AND Supabase — all on the main thread. Pushing to setTimeout(0) lets the
+  // the repaint. State.save() hits localStorage, sessionStorage, IndexedDB. Pushing to setTimeout(0) lets the
   // browser paint the theme change first, then saves after the frame settles.
   const _statsEl = document.getElementById('stats');
   const _statsActive = _statsEl && _statsEl.classList.contains('active');
@@ -175,9 +199,18 @@ function showSection(name){
     if(_statsRevealObserver){ _statsRevealObserver.disconnect(); _statsRevealObserver=null; }
   }
   $$('.section').forEach(s=>s.classList.remove('active'));
-  $$('.nav-item,.mobile-nav-item').forEach(n=>n.classList.remove('active'));
   const sec=document.getElementById(name); if(sec) sec.classList.add('active');
-  document.querySelectorAll(`[data-section="${name}"]`).forEach(el=>el.classList.add('active'));
+  const navSection = name === 'goal-detail' ? 'goals' : name;
+  $$('.nav-item, .mobile-nav-item').forEach(item => {
+    const active = item.dataset.section === navSection;
+    item.classList.toggle('active', active);
+    if(active) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
+  });
+  $('workspacePage').textContent = name === 'goal-detail'
+    ? 'Habit details'
+    : document.querySelector('.nav-item.active .nav-label')?.textContent || 'Overview';
+  window.scrollTo(0, 0);
   if(name==='dashboard') updateDashboard();
   if(name==='pomodoro'){
     const activeTab = document.querySelector('.pomo-tab.active');
@@ -191,18 +224,28 @@ function showSection(name){
   if(name==='planner') renderPlanner();
   if(name==='tasks') renderTaskList();
   if(name==='notes') renderNotesList();
-  if(name==='goals') { if(typeof Goals !== 'undefined') { Goals.autoFillAllMissed(); Goals.render(); } }
+  if(name==='goals') { if(typeof Goals !== 'undefined') Goals.render(); }
   if(name==='goal-detail') { /* rendered by Goals.renderDetail */ }
 }
 $$('.nav-item').forEach(i=>i.addEventListener('click',()=>showSection(i.dataset.section)));
 $$('.mobile-nav-item').forEach(i=>i.addEventListener('click',()=>showSection(i.dataset.section)));
 function goToTimer(){ showSection('pomodoro'); }
+$('dashboardNewTask').addEventListener('click', () => {
+  showSection('tasks');
+  $('taskInput').focus();
+});
 
 // ── CLOCK ──
 function updateClock(){
   const now=new Date();
   $('sidebarTime').textContent=now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
   $('sidebarDate').textContent=now.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+  const workspaceDate = $('workspaceDate');
+  const date = dateStr(now);
+  if(workspaceDate.dateTime !== date){
+    workspaceDate.dateTime = date;
+    workspaceDate.textContent = now.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+  }
   const h=now.getHours();
   const greet=h<12?'Good morning':h<17?'Good afternoon':'Good evening';
   const gl=document.querySelector('#dashboard .section-label');
@@ -210,20 +253,7 @@ function updateClock(){
 }
 updateClock(); setInterval(updateClock,1000);
 
-// ── QUOTES / TIPS ──
-const quotes=[
-  {text:"The secret of getting ahead is getting started.",author:"Mark Twain"},
-  {text:"Focus is a matter of deciding what things you're not going to do.",author:"John Carmack"},
-  {text:"Time is what we want most, but what we use worst.",author:"William Penn"},
-  {text:"Either you run the day, or the day runs you.",author:"Jim Rohn"},
-  {text:"Until we can manage time, we can manage nothing else.",author:"Peter Drucker"},
-  {text:"Deep work is the ability to focus without distraction on a cognitively demanding task.",author:"Cal Newport"},
-  {text:"It's not that I'm so smart, it's just that I stay with problems longer.",author:"Albert Einstein"},
-];
-let qi=Math.floor(Math.random()*quotes.length);
-function showQuote(){ const q=quotes[qi%quotes.length]; const qt=$('quoteText'),qa=$('quoteAuthor'); if(qt) qt.textContent=`"${q.text}"`; if(qa) qa.textContent=`— ${q.author}`; qi++; }
-showQuote();
-
+// ── DASHBOARD TIPS ──
 const tips=[
   {title:"The Focus Technique",desc:"Work in 25-minute focused intervals with 5-minute breaks. After 4 sessions take a longer 15–30 minute break to restore full concentration."},
   {title:"Time Blocking",desc:"Assign every hour a specific task before your day starts. This kills decision fatigue and protects your most important work."},
@@ -243,7 +273,7 @@ function updateDashboard(){
   const _w=(id,v)=>{ const el=$(id); if(el) el.style.width=v; };
   _s('todayFocusTime',`${Math.floor(mins/60)}h ${mins%60}m`);
   _w('focusFill',Math.min(100,(mins/240)*100)+'%');
-  const total=State.tasks.length, done=State.tasks.filter(t=>t.done).length;
+  const total=State.tasks.length, done=State.tasks.filter(t=>t.done || t.status==='done').length;
   _s('tasksCompleted',`${done} / ${total}`);
   _w('taskFill',total?(done/total*100)+'%':'0%');
   _s('streakDays',State.stats.currentStreak);
@@ -251,12 +281,14 @@ function updateDashboard(){
   _s('pomodoroCount',State.stats.totalPomodoros);
   _w('pomodoroFill',Math.min(100,State.stats.totalPomodoros*8)+'%');
   _s('dashTimerDisplay',fmt(State.pomo.secondsLeft));
+  const timerMode = {pomodoro:'Deep focus', short:'Short break', long:'Long break'};
+  _s('dashSessionType', `${timerMode[State.pomo.mode]} · ${State.pomo.totalSeconds / 60} min`);
   const list=$('dashTaskList');
   if(list){
-    const pending=State.tasks.filter(t=>!t.done).slice(0,5);
+    const pending=State.tasks.filter(t=>!t.done && t.status!=='done').slice(0,4);
     list.innerHTML=pending.length
-      ?pending.map(t=>`<li class="preview-task"><span style="color:var(--text-muted)">◇</span> ${t.name}</li>`).join('')
-      :'<li class="preview-task empty-state">No tasks yet — add some in Tasks ↗</li>';
+      ?pending.map(t=>`<li class="preview-task"><span class="preview-task-dot" aria-hidden="true"></span><span>${escapeHtml(t.name)}</span></li>`).join('')
+      :'<li class="preview-task empty-state"><span class="preview-task-dot" aria-hidden="true"></span><div><strong>Nothing in the queue</strong><p>Add a task to see it here.</p></div></li>';
   }
   renderWeekBars(); renderMonthGrid();
 }
@@ -344,7 +376,7 @@ function applyPomoModeColors(){
 function updateTimerUI(){
   const d=fmt(POMO.secondsLeft);
   $('timerDisplay').textContent=d; const dtd=$('dashTimerDisplay'); if(dtd) dtd.textContent=d;
-  document.title=POMO.running?`${d} — FOCUS`:'FOCUS';
+  document.title=POMO.running?`${d} — FOCUS`:'Focus · Personal workspace';
   const circ=2*Math.PI*130,off=circ*(1-POMO.secondsLeft/POMO.totalSeconds);
   $('ringProgress').style.strokeDashoffset=circ-off;
   $('timerSessionLabel').textContent={pomodoro:'FOCUS',short:'BREAK',long:'LONG BREAK'}[POMO.mode];
@@ -700,7 +732,7 @@ function renderTaskList(){
     return `<li class="task-item task-grid-row${isDone?' done':''}${isOverdue?' overdue-task':''}" data-id="${t.id}" draggable="true" ${gridStyle}>
       <div class="task-drag-handle" title="Drag to reorder">⠿</div>
       <div class="task-name-cell">
-        <span class="task-name" data-full="${t.name.replace(/"/g,'&quot;')}">${t.name}</span>
+        <span class="task-name" data-full="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
         <button class="task-readmore-btn" style="display:none" onclick="expandTaskName(this)">read more</button>
         <span class="task-category-tag tag-${t.category}">${t.category}</span>
       </div>
@@ -708,10 +740,10 @@ function renderTaskList(){
         <select class="task-priority-select pri-select-${pm.key||t.priority}"
           onchange="updateTaskPriority(${t.id},this.value)"
           title="Priority">
-          <option value="low"${t.priority==='low'?' selected':''}>🟢 Low</option>
-          <option value="medium"${t.priority==='medium'?' selected':''}>🟡 Medium</option>
-          <option value="high"${t.priority==='high'?' selected':''}>🟠 High</option>
-          <option value="critical"${t.priority==='critical'?' selected':''}>🔴 Critical</option>
+          <option value="low"${t.priority==='low'?' selected':''}>Low</option>
+          <option value="medium"${t.priority==='medium'?' selected':''}>Medium</option>
+          <option value="high"${t.priority==='high'?' selected':''}>High</option>
+          <option value="critical"${t.priority==='critical'?' selected':''}>Critical</option>
         </select>
       </div>
       <div class="task-status-cell">
@@ -1139,85 +1171,74 @@ $('zoomBackBtn')?.addEventListener('click',()=>{
   $('zoomBackBtn').style.display='none';
 });
 
+function plannerOverviewBlocks(key){
+  return [...(State.planner.blocks[key] || [])].sort((a,b)=>timeToMins(a.start)-timeToMins(b.start));
+}
+
 function showWeekView(){
   $('weeklyView').style.display='block';
   $('monthlyView').style.display='none';
   $('dayZoomView').style.display='none';
   $('zoomBackBtn').style.display='none';
   $('plannerNav').style.display='none';
-  const off=State.planner.weekOffset;
-  const mon=getWeekStart(off); // Monday
-  // Build Sun→Sat order: Sun is mon-1 day, then Mon..Sat
-  const sunDate=new Date(mon); sunDate.setDate(mon.getDate()-1);
-  const allDays=[sunDate,...Array.from({length:6},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return d;})];
-  const today=todayStr(), todayDate=new Date();
-  const isThisWeek=off===0;
-  const grid=$('weeklyPlannerGrid'); grid.innerHTML='';
-  const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const DAY_START=0, DAY_END=24; // hours
+  const sunday=getWeekStart(State.planner.weekOffset);
+  sunday.setDate(sunday.getDate()-1);
+  const today=todayStr();
+  const grid=$('weeklyPlannerGrid');
+  grid.innerHTML='';
+  const weekday=new Intl.DateTimeFormat(undefined,{weekday:'short'});
+  let nowMarker=null;
 
-  allDays.forEach((day,i)=>{
-    const key=dateStr(day), blocks=State.planner.blocks[key]||[];
-    const isToday=key===today;
-    const isPast=day<new Date(todayDate.getFullYear(),todayDate.getMonth(),todayDate.getDate());
-    const row=document.createElement('div'); row.className='week-row';
-    let headerCls='week-row-header'; let blocksCls='week-row-blocks';
-    if(isToday){headerCls+=' is-today';blocksCls+=' is-today';}
-    else if(isPast){headerCls+=' is-past';blocksCls+=' is-past';}
+  for(let i=0;i<7;i++){
+    const day=new Date(sunday);
+    day.setDate(sunday.getDate()+i);
+    const key=dateStr(day);
+    const blocks=plannerOverviewBlocks(key);
+    const status=key===today?' is-today':key<today?' is-past':'';
+    const row=document.createElement('div');
+    row.className='week-row';
+    row.innerHTML=`<div class="week-row-header${status}">
+      <span class="day-name">${weekday.format(day)}</span><span class="day-num">${day.getDate()}</span>
+    </div>`;
 
-    // Build timeline HTML
-    const header=document.createElement('div'); header.className=headerCls;
-    header.innerHTML=`<div class="day-name">${dayNames[i]}</div><div class="day-num">${day.getDate()}</div>`;
-
-    const blocksDiv=document.createElement('div'); blocksDiv.className=blocksCls; blocksDiv.dataset.key=key;
-    const timeline=document.createElement('div'); timeline.className='week-row-timeline'; timeline.style.position='relative'; timeline.style.width='100%'; timeline.style.height='40px';
-
-    if(blocks.length===0){
-      const empty=document.createElement('div'); empty.className='week-row-empty'; empty.textContent='—'; timeline.appendChild(empty);
-    } else {
-      blocks.forEach(b=>{
-        const startMins=timeToMins(b.start);
-        let endMins=timeToMins(b.end); if(endMins<=startMins) endMins+=24*60;
-        const durTotal=(DAY_END-DAY_START)*60;
-        const leftPct=Math.max(0,(startMins-DAY_START*60)/durTotal*100);
-        const widthPct=Math.max(0.5,Math.min(100-leftPct,(endMins-startMins)/durTotal*100));
-        const el=document.createElement('div');
-        el.className=`mini-block block-${b.type}`;
-        el.style.left=leftPct+'%'; el.style.width=widthPct+'%';
-        el.innerHTML=`<span style="font-size:9px;opacity:0.7">${b.start}</span> ${b.title}`;
-        el.title=`${b.title} (${b.start}–${b.end})`;
-        timeline.appendChild(el);
-      });
+    const preview=document.createElement('button');
+    preview.type='button';
+    preview.className='week-row-blocks'+status;
+    preview.dataset.key=key;
+    preview.setAttribute('aria-label',`Open ${day.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})}, ${blocks.length} blocks`);
+    preview.innerHTML=blocks.length
+      ? `<span class="planner-overview-tiles">${blocks.map(block=>{
+        const title=escapeHtml(block.title);
+        const time=`${escapeHtml(block.start)}–${escapeHtml(block.end)}`;
+        return `<span class="planner-overview-tile block-${escapeHtml(block.type)}${block.done?' is-done':''}" title="${title} · ${time}">
+          <span class="planner-overview-time">${block.done?'✓ ':''}${time}</span>
+          <span class="planner-overview-title">${title}</span>
+        </span>`;
+      }).join('')}</span>`
+      : '<span class="planner-overview-empty">No blocks planned</span>';
+    if(key===today){
+      const rail=document.createElement('span');
+      rail.className='planner-overview-rail';
+      rail.setAttribute('aria-hidden','true');
+      nowMarker=document.createElement('span');
+      nowMarker.className='week-row-now-line';
+      rail.appendChild(nowMarker);
+      preview.appendChild(rail);
     }
-
-    // Now-line for today
-    if(isToday){
-      const now=new Date();
-      const totalMins=now.getHours()*60+now.getMinutes();
-      const pct=(totalMins/(DAY_END*60))*100;
-      const nl=document.createElement('div'); nl.className='week-row-now-line';
-      nl.style.left=pct+'%'; nl.id='weekNowLine_'+key;
-      timeline.appendChild(nl);
-    }
-
-    const hint=document.createElement('div'); hint.className='week-zoom-hint'; hint.textContent='Tap to edit';
-    blocksDiv.appendChild(timeline); blocksDiv.appendChild(hint);
-    blocksDiv.addEventListener('click',()=>{ State.zoomedDay=key; showDayZoom(key); });
-    row.appendChild(header); row.appendChild(blocksDiv);
+    preview.addEventListener('click',()=>{ State.zoomedDay=key; showDayZoom(key); });
+    row.appendChild(preview);
     grid.appendChild(row);
-  });
+  }
 
-  // Update now-line every minute
   clearInterval(window._weekNowInterval);
-  window._weekNowInterval=setInterval(()=>{
-    allDays.forEach(day=>{
-      if(dateStr(day)!==today)return;
-      const nl=document.getElementById('weekNowLine_'+today); if(!nl)return;
+  if(nowMarker){
+    const updateMarker=()=>{
       const now=new Date();
-      const pct=(now.getHours()*60+now.getMinutes())/(24*60)*100;
-      nl.style.left=pct+'%';
-    });
-  },60000);
+      nowMarker.style.left=((now.getHours()*60+now.getMinutes())/1440*100)+'%';
+    };
+    updateMarker();
+    window._weekNowInterval=setInterval(updateMarker,60000);
+  }
 }
 
 function showDayZoom(key){
@@ -1229,7 +1250,11 @@ function showDayZoom(key){
   $('plannerViewToggle').style.display='none';
   const d=new Date(key+'T12:00:00');
   $('dayZoomHeader').textContent=d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+  const blocks=State.planner.blocks[key]||[];
+  setSuggestedBlockStart(blocks);
   renderDayGrid(key);
+  const firstStart=blocks.length ? Math.min(...blocks.map(block=>timeToMins(block.start))) : 9*60;
+  $('dayZoomGrid').scrollTop=Math.max(0,firstStart*PX_PER_MINUTE-48);
   startNowLine(key);
   startBlockCountdownInterval();
 }
@@ -1258,17 +1283,19 @@ function showMonthView(){
   });
   for(let i=0;i<firstDow;i++){const e=document.createElement('div');e.className='month-cell empty';grid.appendChild(e);}
   const today=todayStr();
-  const todayDate=new Date(); todayDate.setHours(0,0,0,0);
   for(let d=1;d<=dim;d++){
     const dateKey=`${y}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const blocks=State.planner.blocks[dateKey]||[];
+    const blocks=plannerOverviewBlocks(dateKey);
     const isToday=dateKey===today;
-    const cellDate=new Date(y,mo,d); cellDate.setHours(0,0,0,0);
-    const isPast=cellDate<todayDate&&!isToday;
-    const cell=document.createElement('div');
+    const isPast=dateKey<today;
+    const cell=document.createElement('button');
+    cell.type='button';
     cell.className=`month-cell${isToday?' is-today':''}${isPast?' is-past':''}`;
-    cell.innerHTML=`<div class="month-cell-num">${d}</div>
-      <div class="month-cell-blocks">${blocks.slice(0,3).map(b=>`<div class="month-mini-block block-${b.type}">${b.title}</div>`).join('')}${blocks.length>3?`<div class="month-more">+${blocks.length-3}</div>`:''}</div>`;
+    cell.setAttribute('aria-label',`Open ${new Date(y,mo,d).toLocaleDateString(undefined,{month:'long',day:'numeric'})}, ${blocks.length} blocks`);
+    const count=blocks.length?`<span class="planner-month-count">${blocks.length}</span>`:'';
+    const previews=blocks.slice(0,2).map(block=>`<span class="month-mini-block block-${escapeHtml(block.type)}${block.done?' is-done':''}" title="${escapeHtml(block.title)}">
+      <span>${escapeHtml(block.title)}</span></span>`).join('');
+    cell.innerHTML=`<span class="month-cell-num">${d}${count}</span><span class="month-cell-blocks">${previews}</span>`;
     cell.addEventListener('click',()=>{
       State.zoomedDay=dateKey;
       showDayZoom(dateKey);
@@ -1291,8 +1318,7 @@ function updateNowLine(key){
   const grid=$('dayZoomGrid'); if(!grid)return;
   const now=new Date();
   const totalMins=now.getHours()*60+now.getMinutes();
-  // Use same pixel math as blocks: minutes -> pixels at ROW_H px/hour
-  const topPx=(totalMins/60)*ROW_H;
+  const topPx=totalMins*PX_PER_MINUTE;
   const line=document.createElement('div');
   line.className='now-line';
   // Place inside blockLayer if it exists, otherwise fall back to grid
@@ -1302,7 +1328,9 @@ function updateNowLine(key){
 }
 
 
-const GRID_START_HOUR=0, GRID_END_HOUR=24, ROW_H=60;
+const DAY_MINUTES=24*60;
+const PX_PER_MINUTE=2.4;
+const COMPACT_BLOCK_HEIGHT=56;
 const LABEL_W=60; // px width of time-label column
 
 function renderDayGrid(key){
@@ -1310,13 +1338,16 @@ function renderDayGrid(key){
   const grid=$('dayZoomGrid'), today=todayStr();
   grid.innerHTML='';
   grid.style.position='relative';
+  const startInput=$('blockStartTime');
+  if(startInput.value===startInput.dataset.suggestedStart) setSuggestedBlockStart(blocks);
 
-  const totalH=(GRID_END_HOUR-GRID_START_HOUR)*ROW_H;
+  const totalH=DAY_MINUTES*PX_PER_MINUTE;
+  grid.style.setProperty('--planner-hour-height', 60*PX_PER_MINUTE+'px');
 
-  // 1. Row layer: 24 time-rows with labels + drop slots
+  // Hour guides sit below the draggable block layer.
   const rowLayer=document.createElement('div');
   rowLayer.style.cssText='position:relative;width:100%;height:'+totalH+'px;flex-shrink:0;';
-  for(let h=GRID_START_HOUR;h<GRID_END_HOUR;h++){
+  for(let h=0;h<24;h++){
     const row=document.createElement('div'); row.className='time-row';
     const lbl=document.createElement('div'); lbl.className='time-label';
     if(h===0) lbl.textContent='12:00 AM';
@@ -1325,14 +1356,6 @@ function renderDayGrid(key){
     else lbl.textContent=(h-12)+':00 PM';
     if(key===today&&new Date().getHours()===h) lbl.style.color='var(--accent)';
     const slot=document.createElement('div'); slot.className='time-slot';
-    slot.dataset.hour=h;
-    slot.addEventListener('dragover',e=>{ e.preventDefault(); slot.classList.add('drop-target'); });
-    slot.addEventListener('dragleave',()=>slot.classList.remove('drop-target'));
-    slot.addEventListener('drop',e=>{
-      e.preventDefault(); slot.classList.remove('drop-target');
-      const bid=e.dataTransfer.getData('bid'), dkey=e.dataTransfer.getData('key');
-      moveBlock(dkey,bid,h,0,key);
-    });
     row.appendChild(lbl); row.appendChild(slot); rowLayer.appendChild(row);
   }
   grid.appendChild(rowLayer);
@@ -1346,23 +1369,18 @@ function renderDayGrid(key){
 
   blocks.forEach(b=>{
     const startMins=timeToMins(b.start);
-    let endMins=timeToMins(b.end);
-    if(endMins<=startMins) endMins+=24*60; // wrap midnight (handles 00:00 end too)
-    if(endMins<=startMins) endMins=startMins+30;
-    const startH=Math.floor(startMins/60);
-    if(startH<GRID_START_HOUR||startH>=GRID_END_HOUR)return;
-    const durMins=Math.max(15,endMins-startMins);
-    // Position is absolute minutes-from-midnight mapped to the full block layer
-    const topPx=(startMins-GRID_START_HOUR*60)/60*ROW_H;
-    // Clamp height so block never exceeds the grid boundary
-    const maxHeightPx=(GRID_END_HOUR-GRID_START_HOUR)*ROW_H-topPx;
-    const heightPx=Math.min(maxHeightPx, Math.max(22,durMins/60*ROW_H-2));
+    if(!Number.isFinite(startMins) || startMins<0 || startMins>=DAY_MINUTES) return;
+    const duration=plannerBlockDuration(b);
+    const visibleDuration=Math.min(duration,DAY_MINUTES-startMins);
+    const topPx=startMins*PX_PER_MINUTE;
+    const heightPx=visibleDuration*PX_PER_MINUTE;
     const isDone=!!b.done;
 
     const el=document.createElement('div');
     el.className='time-block block-'+b.type+(isDone?' block-done':'');
     el.style.cssText='position:absolute;top:'+topPx+'px;height:'+heightPx+'px;left:4px;right:4px;pointer-events:all;';
-    el.draggable=true;
+    el.classList.toggle('compact-block',heightPx<COMPACT_BLOCK_HEIGHT);
+    el.title=b.title+' ('+b.start+'–'+b.end+')';
     el.dataset.bid=b.id; el.dataset.key=key;
 
     const notePreview=b.note?`<div class="time-block-note-preview">${b.note.substring(0,40)}${b.note.length>40?'…':''}</div>`:'';
@@ -1386,12 +1404,7 @@ function renderDayGrid(key){
       ${notePopover}
       <div class="block-countdown" data-start="${b.start}" data-end="${b.end}" data-day="${key}"></div>`;
 
-    el.addEventListener('dragstart',e=>{
-      e.dataTransfer.setData('bid',b.id); e.dataTransfer.setData('key',key);
-      setTimeout(()=>el.classList.add('dragging'),0);
-    });
-    el.addEventListener('dragend',()=>el.classList.remove('dragging'));
-    addTouchDrag(el,b,key,grid);
+    bindPlannerBlockDrag(el,b,key,grid,rowLayer,blocks,duration);
     blockLayer.appendChild(el);
   });
 
@@ -1471,11 +1484,7 @@ function renderInventory(){
 
 function rescheduleInventoryBlock(key, bid){
   const blk=(State.planner.blocks[key]||[]).find(b=>b.id===bid); if(!blk)return;
-  let dur=timeToMins(blk.end)-timeToMins(blk.start);
-  if(dur<=0) dur+=24*60;
-  dur=Math.max(15,dur);
-  // Show reschedule modal
-  showRescheduleModal(key, bid, blk, dur);
+  showRescheduleModal(key, bid, blk, plannerBlockDuration(blk));
 }
 
 function showRescheduleModal(key, bid, blk, dur){
@@ -1582,55 +1591,114 @@ function startBlockCountdownInterval(){
   blockCountdownInterval=setInterval(updateBlockCountdowns,1000);
 }
 
-// Touch-based drag for mobile
-function addTouchDrag(el, block, key, grid){
-  let startY=0, origTop=0, isDragging=false;
-  el.addEventListener('touchstart',e=>{
-    startY=e.touches[0].clientY; origTop=parseInt(el.style.top)||0; isDragging=false;
-  },{passive:true});
-  el.addEventListener('touchmove',e=>{
-    const dy=e.touches[0].clientY-startY;
-    if(!isDragging&&Math.abs(dy)>8){isDragging=true;el.classList.add('dragging');}
-    if(!isDragging)return;
-    e.preventDefault();
-    el.style.top=Math.max(0,origTop+dy)+'px';
-  },{passive:false});
-  el.addEventListener('touchend',e=>{
-    if(!isDragging){
-      el.classList.remove('dragging');
-      // Tap on a block with a note — toggle the note popover
-      if(block.note && el.classList.contains('has-note') && !e.target.closest('button') && !e.target.closest('input')){
-        const isOpen=el.classList.contains('note-open');
-        // Close any other open popovers first
-        document.querySelectorAll('.time-block.note-open').forEach(b=>b.classList.remove('note-open'));
-        if(!isOpen) el.classList.add('note-open');
-      }
-      return;
-    }
-    el.classList.remove('dragging');
-    // top is absolute from midnight in pixels at ROW_H px/hour
-    const newTop=Math.max(0,parseInt(el.style.top)||0);
-    const newTotalMins=(newTop/ROW_H)*60;
-    const newHour=Math.min(GRID_END_HOUR-1,Math.floor(newTotalMins/60));
-    const newMin=Math.round(newTotalMins%60);
-    moveBlock(key,block.id,newHour,newMin,key);
-  });
+function plannerBlockDuration(block){
+  const duration=timeToMins(block.end)-timeToMins(block.start);
+  return duration>0 ? duration : duration+DAY_MINUTES;
 }
 
-function moveBlock(fromKey, bid, newHour, newMin, toKey){
-  if(!State.planner.blocks[fromKey])return;
-  const blk=State.planner.blocks[fromKey].find(b=>b.id===bid); if(!blk)return;
-  let dur=timeToMins(blk.end)-timeToMins(blk.start);
-  if(dur<=0) dur+=24*60; // handle midnight-crossing blocks
-  const clampedHour=Math.max(GRID_START_HOUR,Math.min(GRID_END_HOUR-1,newHour));
-  blk.start=`${String(clampedHour).padStart(2,'0')}:${String(newMin).padStart(2,'0')}`;
-  blk.end=minsToTime(clampedHour*60+newMin+Math.max(15,dur));
-  if(toKey!==fromKey){
-    if(!State.planner.blocks[toKey])State.planner.blocks[toKey]=[];
-    State.planner.blocks[toKey].push(blk);
-    State.planner.blocks[fromKey]=State.planner.blocks[fromKey].filter(b=>b.id!==bid);
+function setSuggestedBlockStart(blocks){
+  const latestEnd=blocks.reduce((latest, block)=>{
+    const end=timeToMins(block.start)+plannerBlockDuration(block);
+    return end<DAY_MINUTES ? Math.max(latest, end) : latest;
+  }, 0);
+  const input=$('blockStartTime');
+  input.value=latestEnd ? minsToTime(latestEnd) : '09:00';
+  input.dataset.suggestedStart=input.value;
+}
+
+function bindPlannerBlockDrag(el, block, key, grid, rowLayer, blocks, duration){
+  const start=timeToMins(block.start);
+  let drag=null;
+
+  function updatePosition(){
+    const minute=Math.max(0, Math.min(DAY_MINUTES-1,
+      (drag.y-rowLayer.getBoundingClientRect().top-drag.offset)/PX_PER_MINUTE));
+    let next=Math.round(minute);
+    let nearest=8;
+    for(const candidate of drag.boundaries){
+      const distance=Math.abs(candidate-minute);
+      if(distance<=nearest){
+        next=candidate;
+        nearest=distance;
+      }
+    }
+    drag.minute=next;
+    el.style.top=next*PX_PER_MINUTE+'px';
+    const height=Math.min(duration,DAY_MINUTES-next)*PX_PER_MINUTE;
+    el.style.height=height+'px';
+    el.classList.toggle('compact-block',height<COMPACT_BLOCK_HEIGHT);
   }
-  State.save(); renderDayGrid(toKey||fromKey);
+
+  function scrollWhileDragging(){
+    if(!drag || !el.isConnected || !grid.clientHeight) return;
+    const {top,bottom}=grid.getBoundingClientRect();
+    const zone=Math.min(40,grid.clientHeight/4);
+    const before=grid.scrollTop;
+    if(drag.y<top+zone) grid.scrollTop-=Math.min(24,(top+zone-drag.y)/2);
+    else if(drag.y>bottom-zone) grid.scrollTop+=Math.min(24,(drag.y-bottom+zone)/2);
+    if(grid.scrollTop!==before) updatePosition();
+    drag.frame=requestAnimationFrame(scrollWhileDragging);
+  }
+
+  el.addEventListener('pointerdown',e=>{
+    if(drag || !e.isPrimary || e.button!==0 || e.target.closest('button,label,input')) return;
+    const offset=e.clientY-rowLayer.getBoundingClientRect().top-start*PX_PER_MINUTE;
+    drag={id:e.pointerId,y:e.clientY,initialY:e.clientY,offset,minute:start,active:false,frame:0};
+    el.setPointerCapture(e.pointerId);
+  });
+  el.addEventListener('pointermove',e=>{
+    if(!drag || e.pointerId!==drag.id) return;
+    drag.y=e.clientY;
+    if(!drag.active){
+      if(Math.abs(drag.y-drag.initialY)<5) return;
+      drag.active=true;
+      drag.boundaries=blocks.filter(other=>other!==block).flatMap(other=>{
+        const otherStart=timeToMins(other.start);
+        return [otherStart-duration, otherStart+plannerBlockDuration(other)];
+      }).filter(candidate=>candidate>=0 && candidate<DAY_MINUTES);
+      el.classList.add('dragging');
+      drag.frame=requestAnimationFrame(scrollWhileDragging);
+    }
+    updatePosition();
+  });
+
+  function finish(e, commit){
+    if(!drag || e.pointerId!==drag.id) return;
+    const {active,minute,frame}=drag;
+    drag=null;
+    cancelAnimationFrame(frame);
+    if(!active) return;
+    el.classList.remove('dragging');
+    if(commit && minute!==start){
+      block.start=minsToTime(minute);
+      block.end=minsToTime(minute+duration);
+      State.save();
+      renderDayGrid(key);
+    } else {
+      el.style.top=start*PX_PER_MINUTE+'px';
+      const height=Math.min(duration,DAY_MINUTES-start)*PX_PER_MINUTE;
+      el.style.height=height+'px';
+      el.classList.toggle('compact-block',height<COMPACT_BLOCK_HEIGHT);
+    }
+    if(commit && el.isConnected){
+      // Ignore the click synthesized from this completed drag.
+      const ignoreClick=event=>event.stopImmediatePropagation();
+      el.addEventListener('click',ignoreClick,{capture:true,once:true});
+      setTimeout(()=>el.removeEventListener('click',ignoreClick,true),0);
+    }
+  }
+  el.addEventListener('pointerup',e=>finish(e,true));
+  el.addEventListener('pointercancel',e=>finish(e,false));
+  el.addEventListener('lostpointercapture',e=>finish(e,false));
+
+  if(block.note){
+    el.addEventListener('click',e=>{
+      if(e.target.closest('button,label,input')) return;
+      const open=el.classList.contains('note-open');
+      $$('.time-block.note-open').forEach(item=>item.classList.remove('note-open'));
+      el.classList.toggle('note-open',!open);
+    });
+  }
 }
 
 function deleteBlock(key,id){
@@ -1657,7 +1725,7 @@ $('addBlockBtn')?.addEventListener('click',()=>{
   if(!title){toast('Please enter a block title.','warn');return;}
   const startVal=$('blockStartTime').value || '09:00';
   const [startH, startM] = startVal.split(':');
-  const durMins=parseInt($('blockDuration').value);
+  const durMins=selectedBlockDuration();
   const start=`${startH}:${startM}`;
   const end=minsToTime(parseInt(startH)*60+parseInt(startM)+durMins);
   const type=$('blockType').value;
@@ -1667,19 +1735,24 @@ $('addBlockBtn')?.addEventListener('click',()=>{
   State.planner.blocks[key].push({id:Date.now().toString(),title,start,end,type,note,done:false});
   $('blockTitle').value=''; $('blockNote').value='';
   State.save(); renderDayGrid(key); toast('Block added!','success');
+  const input=$('blockStartTime');
+  if(timeToMins(start)+durMins<DAY_MINUTES){
+    input.value=end;
+    input.dataset.suggestedStart=end;
+  } else {
+    setSuggestedBlockStart(State.planner.blocks[key]);
+  }
   // Scroll to the newly added block
   setTimeout(()=>{
     const grid=$('dayZoomGrid'); if(!grid)return;
-    const [sh,sm]=start.split(':').map(Number);
-    const topPx=(sh*60+sm)/60*ROW_H;
+    const topPx=timeToMins(start)*PX_PER_MINUTE;
     grid.scrollTo({top:Math.max(0,topPx-60),behavior:'smooth'});
     // Also scroll the main page to bring the grid into view on mobile
     const wrap=$('dayZoomView'); if(wrap) wrap.scrollIntoView({behavior:'smooth',block:'nearest'});
   },80);
 });
 
-// ── DURATION INPUT (free text, like start time) ──
-let _durVal=60;
+// ── DURATION CONTROLS ──
 function parseDuration(str){
   // Accepts: "90", "90 min", "1h 30m", "1h30m", "1:30", "2h", "45m"
   str=str.trim().toLowerCase();
@@ -1700,28 +1773,21 @@ function formatDur(m){
   const h=Math.floor(m/60),min=m%60;
   return h>0?(min>0?`${h}h ${min}m`:`${h}h`):`${min} min`;
 }
-function setDurVal(v){
-  _durVal=Math.max(1,Math.min(1440,v));
-  $('blockDuration').value=_durVal;
-  const inp=$('blockDurationInput');
-  if(inp) inp.value=formatDur(_durVal);
+const durationSlider=$('blockDurationSlider');
+function selectedBlockDuration(){
+  const position=Number(durationSlider.value);
+  return position<11 ? (position+1)*5 : 60+(position-11)*15;
 }
-setDurVal(60);
-// Bind the text input
-const _durInp=$('blockDurationInput');
-if(_durInp){
-  _durInp.addEventListener('change',()=>{
-    const parsed=parseDuration(_durInp.value);
-    setDurVal(parsed);
-  });
-  _durInp.addEventListener('blur',()=>{
-    const parsed=parseDuration(_durInp.value);
-    setDurVal(parsed);
-  });
-  _durInp.addEventListener('keydown',e=>{
-    if(e.key==='Enter'){const parsed=parseDuration(_durInp.value);setDurVal(parsed);_durInp.blur();}
-  });
+function renderDurationSlider(){
+  const minutes=selectedBlockDuration();
+  const hours=Math.floor(minutes/60);
+  const remainder=minutes%60;
+  const label=hours ? hours+' h'+(remainder ? ' '+remainder+' min' : '') : minutes+' min';
+  $('blockDurationValue').value=label;
+  durationSlider.setAttribute('aria-valuetext',label);
 }
+durationSlider.addEventListener('input',renderDurationSlider);
+renderDurationSlider();
 
 // ── EDIT BLOCK MODAL ──
 let _editKey=null, _editBid=null;
@@ -1794,6 +1860,13 @@ const achievements=[
   {id:'streak_30',icon:'🏆',name:'Iron Focus',max:30,val:s=>Math.min(30,s.bestStreak)},
 ];
 
+// Format focus minutes: under an hour -> "45m", an hour or more -> "1.5h" / "2h"
+function fmtFocus(m){
+  m=Math.round(m||0);
+  if(m<60) return m+'m';
+  return (+(m/60).toFixed(1))+'h';
+}
+
 function updateStats(){
   const s=State.stats, tasks=State.tasks;
   $('totalFocusHours').textContent=(Object.values(s.focusMinutesByDay).reduce((a,b)=>a+b,0)/60).toFixed(1)+'h';
@@ -1832,7 +1905,7 @@ function updateStats(){
   const nextBtn=$('statsNavNext');
   if(nextBtn) nextBtn.disabled = off >= 0;
 
-  $('barChartLabel').textContent=`Daily Focus (${isMonth?($('statsPeriodLabel')?.textContent||'this month'):'week'}, minutes)`;
+  $('barChartLabel').textContent=`Daily Focus (${isMonth?($('statsPeriodLabel')?.textContent||'this month'):'week'})`;
   $('lineGraphLabel').textContent=`Focus Trend (${isMonth?($('statsPeriodLabel')?.textContent||'month'):'week'})`;
 
   // Bar chart
@@ -1843,7 +1916,7 @@ function updateStats(){
     return `<div class="bar-chart-col${isFuture?' future-day':''}">
       <div class="bar-chart-bar${d.key===today?' highlight':''}" style="height:${Math.max(4,pct)}px"></div>
       <div class="bar-chart-label">${d.label}</div>
-      <div class="bar-chart-val">${m>0?m+'m':''}</div>
+      <div class="bar-chart-val">${m>0?fmtFocus(m):''}</div>
     </div>`;
   }).join('');
 
@@ -1883,15 +1956,14 @@ function updateStats(){
   },0);
   const streakPts=Math.round(s.currentStreak*3);
   const habitPts=(()=>{ const HP={done:15,rest:3,miss:-10}; return (Goals._data||[]).reduce((sum,g)=>sum+Object.values(g.log||{}).reduce((s2,e)=>s2+(HP[e.status]||0),0),0); })();
-  // Efficiency ring shows the same rank points as the rank card
-  const rankPts=Math.max(0,State.rank?.points||0);
+  const score=taskPts+sessionPts+blockPts+streakPts+Math.max(0,habitPts);
   const ringMax=500;
   const circ=2*Math.PI*80;
-  const fillPct=Math.min(1,rankPts/ringMax);
+  const fillPct=Math.min(1,score/ringMax);
   $('effProgress').style.strokeDashoffset=circ-(circ*fillPct);
-  $('efficiencyValue').textContent=rankPts>0?rankPts:'—';
+  $('efficiencyValue').textContent=score>0?score:'—';
   const descs={0:'Complete tasks and sessions to build your score.',50:'Good start! Keep the momentum going.',150:"Nice progress. You're building solid habits.",300:"Strong performance. Your focus is sharpening.",500:"Excellent! You're operating at a high level.",800:"Elite. You've mastered time and focus.",1200:"Legendary. Exceptional consistency and output."};
-  const dk=Object.keys(descs).map(Number).filter(k=>rankPts>=k).pop()||0;
+  const dk=Object.keys(descs).map(Number).filter(k=>score>=k).pop()||0;
   const breakdown=`${taskPts} tasks · ${sessionPts} sessions · ${blockPts} blocks · ${streakPts} streak · ${Math.max(0,habitPts)} habits`;
   $('efficiencyDesc').innerHTML=descs[dk]+'<br><span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:0.5px">'+breakdown+'</span>';
 
@@ -2015,7 +2087,7 @@ function drawLineGraph(days, s) {
 
   const vals = days.map(d => s.focusMinutesByDay[d.key] || 0);
   const maxV = Math.max(1, ...vals);
-  const pad  = { l:36, r:12, t:14, b:26 };
+  const pad  = { l:40, r:12, t:14, b:26 };
   const gw   = cssW - pad.l - pad.r;
   const gh   = cssH - pad.t - pad.b;
   const n    = vals.length;
@@ -2033,7 +2105,7 @@ function drawLineGraph(days, s) {
       if (f > 0) {
         ctx.fillStyle = labelColor; ctx.font = '10px JetBrains Mono';
         ctx.textAlign = 'right';
-        ctx.fillText(Math.round(maxV * f) + 'm', pad.l - 4, y + 4);
+        ctx.fillText(fmtFocus(maxV * f), pad.l - 4, y + 4);
       }
     });
     // X labels
@@ -2593,6 +2665,7 @@ function updateRankCard(){
   $('rankBadgeIcon').innerHTML=rank.icon;
   $('rankName').textContent=rank.name;
   $('rankTitle').textContent=rank.title;
+  $('rankPtsDisplay').textContent=pts.toLocaleString()+' pts';
 
   // Progress bar
   if(nextRank){
@@ -2786,8 +2859,7 @@ document.getElementById('devResetRankBtn')?.addEventListener('click',()=>{
 });
 
 // ── DEV: Load Example Data ──
-document.getElementById('devLoadExampleBtn')?.addEventListener('click',()=>{
-  if(!confirm('This will add example tasks, notes, planner blocks, stats, and goals on top of your existing data. Continue?')) return;
+function seedExampleData(){
   const today=todayStr();
   const d=(offset)=>{ const dt=new Date(); dt.setDate(dt.getDate()+offset); return dateStr(dt); };
 
@@ -2802,7 +2874,9 @@ document.getElementById('devLoadExampleBtn')?.addEventListener('click',()=>{
     {id:Date.now()+7, name:'Monthly budget review', category:'personal', priority:'medium', status:'not-started', due:d(4), done:false, created:today},
     {id:Date.now()+8, name:'Call dentist for appointment', category:'health', priority:'low', status:'not-started', due:d(5), done:false, created:today},
   ];
-  State.tasks=[...exTasks, ...State.tasks];
+  State.tasks=exTasks;
+  const completed=exTasks.find(task=>task.done);
+  State.stats.doneOnTimeTasks=[{id:completed.id, name:completed.name, due:today, completedOn:today, category:completed.category}];
 
   // Notes
   const exNotes=[
@@ -2810,7 +2884,41 @@ document.getElementById('devLoadExampleBtn')?.addEventListener('click',()=>{
     {id:Date.now()+101, title:'Project Alpha — Sprint Notes', body:'## Goals this sprint\n- Complete API integration\n- Write unit tests for auth module\n- Review PR from Sarah\n\n## Blockers\n- Waiting on design assets from Jake\n- Need prod credentials for staging env\n\n## Done\n- Set up CI pipeline\n- Fixed mobile nav bug', category:'work', color:'orange', created:Date.now()-172800000, updated:Date.now()-7200000},
     {id:Date.now()+102, title:'Morning Routine Ideas', body:'Try waking up 30 min earlier.\n\nOption A (energising)\n- 6:00 wake, water, stretch\n- 6:15 20 min walk outside\n- 6:35 journal + plan the day\n- 7:00 first deep work block\n\nOption B (gentle)\n- 6:30 wake, meditate 10 min\n- 6:40 coffee + reading\n- 7:00 plan the day', category:'personal', color:'green', created:Date.now()-259200000, updated:Date.now()-86400000},
   ];
-  State.notes=[...exNotes, ...State.notes];
+  State.notes=exNotes;
+
+  const weekdayBlocks = [
+    ['Deep work', '09:00', '10:30', 'focus', 'Work on the main deliverable before checking messages.'],
+    ['Course practice', '11:00', '12:00', 'study', 'Complete the exercises and note any questions.'],
+    ['Lunch break', '12:30', '13:15', 'break', 'Step away from the desk.'],
+    ['Project review', '14:00', '15:00', 'creative', 'Review the draft and capture the next revision.'],
+    ['Plan tomorrow', '16:15', '16:45', 'admin', 'Choose three priorities for the next day.'],
+  ];
+  const weekendBlocks = [
+    ['Morning walk', '09:30', '10:15', 'exercise', 'Take an easy route outside.'],
+    ['Read and take notes', '11:00', '11:45', 'study', 'Save one idea worth revisiting.'],
+    ['Weekly reset', '15:00', '15:45', 'admin', 'Review the week and clear the inbox.'],
+  ];
+  const focusTopics = ['Portfolio draft', 'Machine learning practice', 'Writing sprint',
+    'Landing page design', 'Project research'];
+  const monday = getWeekDays()[0];
+  const weekStart = new Date(monday + 'T12:00:00');
+  State.planner.blocks = {};
+  let blockId = 1;
+
+  // Two weeks of history, this week, and two upcoming weeks.
+  for (let day = -14; day < 21; day++) {
+    const date = new Date(weekStart);
+    date.setDate(date.getDate() + day);
+    const key = dateStr(date);
+    const weekday = (date.getDay() + 6) % 7;
+    const schedule = weekday < 5 ? weekdayBlocks : weekendBlocks;
+    State.planner.blocks[key] = schedule.map(([title, start, end, type, note], index) => ({
+      id: blockId++,
+      title: type === 'focus' ? focusTopics[weekday] : title,
+      start, end, type, note,
+      done: key < today && (day + index + 14) % 6 !== 0,
+    }));
+  }
 
   // Stats — sprinkle focus minutes across the last 14 days
   const focusSeed=[95,0,120,75,110,0,80,145,60,90,0,105,50,70];
@@ -2829,16 +2937,11 @@ document.getElementById('devLoadExampleBtn')?.addEventListener('click',()=>{
   State.rank.events=[{desc:'Example data loaded',pts:350,ts:Date.now()},...(State.rank.events||[])].slice(0,20);
 
   // Goals — seed 3 example habits with realistic history
-  const gToday = new Date();
-  const gDateStr = (offset) => {
-    const dt = new Date(gToday); dt.setDate(dt.getDate() + offset);
-    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
-  };
   const buildLog = (pattern) => {
     // pattern: array of {offset, status, note?} going back N days
     const log = {};
     pattern.forEach(({offset, status, note}) => {
-      log[gDateStr(offset)] = {status, note: note||''};
+      log[d(offset)] = {status, note: note||'', ...(status==='done' ? {quality: 3 + (Math.abs(offset) % 3)} : {})};
     });
     return log;
   };
@@ -2847,6 +2950,7 @@ document.getElementById('devLoadExampleBtn')?.addEventListener('click',()=>{
     {
       id: 'demo-goal-1',
       name: 'Morning Run',
+      qualitySpec: true,
       icon: '🏃',
       color: '#4dd87a',
       category: 'fitness',
@@ -2862,6 +2966,7 @@ document.getElementById('devLoadExampleBtn')?.addEventListener('click',()=>{
     {
       id: 'demo-goal-2',
       name: 'Read 30 Minutes',
+      qualitySpec: true,
       icon: '📚',
       color: '#4a8fe8',
       category: 'learning',
@@ -2890,19 +2995,8 @@ document.getElementById('devLoadExampleBtn')?.addEventListener('click',()=>{
     },
   ];
 
-  // Merge: don't overwrite existing goals with same id
-  const existingIds = Goals._data.map(g=>g.id);
-  exGoals.forEach(g => { if(!existingIds.includes(g.id)) Goals._data.push(g); });
-  Goals.save();
-  if(document.getElementById('goals')?.classList.contains('active')) Goals.render();
-
-  State.save();
-  updateDashboard();
-  renderTaskList();
-  renderNotesList();
-  if(document.getElementById('stats').classList.contains('active')) updateStats();
-  toast('Example data loaded','success');
-});
+  Goals._data=exGoals;
+}
 
 // ── SETTINGS PAGE CONTROLS ──
 document.querySelectorAll('#settingsThemePicker .tswatch').forEach(btn => {
@@ -2910,6 +3004,9 @@ document.querySelectorAll('#settingsThemePicker .tswatch').forEach(btn => {
 });
 document.getElementById('settingsLightModeBtn')?.addEventListener('click', () => applyTheme(State.theme, !State.lightMode));
 // Altayer-style checkbox toggles dark/light mode
+document.querySelector('.desktop-focus-toggle').addEventListener('click', () => {
+  applyTheme(State.theme, !State.lightMode);
+});
 const darkmodeSwitch = document.getElementById('darkmode-switch');
 if(darkmodeSwitch){
   darkmodeSwitch.addEventListener('change', function(){
@@ -2921,8 +3018,9 @@ document.getElementById('resetAllDataBtn')?.addEventListener('click', async () =
   if(!confirm('This will permanently delete all your tasks, notes, planner blocks, and statistics. Are you sure?')) return;
 
   // 1. Wipe persisted storage
-  try{ localStorage.removeItem('focus_state_v3'); }catch(e){}
-  try{ if(window.storage) await window.storage.delete('focus_state_v3'); }catch(e){}
+  if(!exampleMode){
+    try{ localStorage.removeItem('focus_state_v3'); }catch(e){}
+  }
 
   // 2. Reset in-memory State to defaults
   State.tasks = [];
@@ -2951,9 +3049,160 @@ document.getElementById('resetAllDataBtn')?.addEventListener('click', async () =
   toast('All data has been reset.', 'success');
 });
 
+// ── EXPORT / IMPORT USER DATA (JSON) ──
+const EXPORT_FORMAT = 'focus-export';
+const EXPORT_VERSION = 1;
+
+function exportUserData(){
+  try{
+    const payload = {
+      format: EXPORT_FORMAT,
+      version: EXPORT_VERSION,
+      exportedAt: new Date().toISOString(),
+      data: State.snapshot(),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `focus-data-${todayStr()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+    toast('Data exported', 'success');
+  }catch(e){
+    console.warn('[Export] failed', e);
+    toast('Export failed', 'warn');
+  }
+}
+
+// Validates + normalises an imported object, then replaces current data with it.
+// Returns true on success.
+function importUserData(parsed){
+  // Accept both the wrapped export format and a raw state object
+  const s = (parsed && parsed.data && typeof parsed.data === 'object') ? parsed.data : parsed;
+  if(!s || typeof s !== 'object' || Array.isArray(s)) throw new Error('Not a valid FOCUS data file');
+
+  const KNOWN = ['tasks','taskTrash','planner','blockTrash','stats','pomo','notes','noteTrash',
+                 'theme','lightMode','classicLook','rank','rankSystemEnabled','goals','goalsTrash'];
+  if(!KNOWN.some(k => k in s)) throw new Error('This file has no FOCUS data in it');
+
+  const arr = v => Array.isArray(v) ? v : [];
+  const obj = v => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+  const THEMES = ['midnight','forest','sunset','arctic','rose','ultraviolet'];
+
+  // Stop any running timer before swapping state underneath it
+  if(POMO.running){ clearInterval(POMO.intervalId); POMO.running = false; }
+
+  State.tasks      = arr(s.tasks);
+  State.taskTrash  = arr(s.taskTrash);
+  State.planner    = { blocks: obj(s.planner), weekOffset: 0 };
+  State.blockTrash = arr(s.blockTrash);
+  State.notes      = arr(s.notes);
+  State.noteTrash  = arr(s.noteTrash);
+  State.activeNoteId = null;
+  State.zoomedDay  = null;
+  State.customColumns = [];
+
+  const st = obj(s.stats);
+  State.stats = Object.assign(
+    { focusMinutesByDay:{}, totalPomodoros:0, bestStreak:0, currentStreak:0, lastFocusDay:'', missedTasks:[], doneOnTimeTasks:[] },
+    st
+  );
+  State.stats.focusMinutesByDay = obj(State.stats.focusMinutesByDay);
+  State.stats.missedTasks       = arr(State.stats.missedTasks);
+  State.stats.doneOnTimeTasks   = arr(State.stats.doneOnTimeTasks);
+
+  const d = obj(obj(s.pomo).durations);
+  ['pomoDuration','shortBreak','longBreak','sessionGoal'].forEach(key=>{
+    const n = Number(d[key]);
+    if(isFinite(n) && n > 0){
+      const [mn,mx] = DUR_BOUNDS[key];
+      POMO.durations[key] = Math.max(mn, Math.min(mx, Math.round(n)));
+    }
+  });
+
+  State.theme = THEMES.includes(s.theme) ? s.theme : 'midnight';
+  State.lightMode = !!s.lightMode;
+  State.classicLook = s.classicLook === true;
+  applyAppearance();
+  State.rankSystemEnabled = s.rankSystemEnabled !== undefined ? !!s.rankSystemEnabled : true;
+  const r = obj(s.rank);
+  State.rank = { points: Number(r.points)||0, events: arr(r.events) };
+  State.hasEverRun = true;
+
+  // Habits
+  const mapGoal = g => ({
+    id: String(g.id || Date.now() + Math.random()),
+    name: g.name || 'Untitled', icon: g.icon || '🎯',
+    color: g.color || GOAL_COLORS[0], category: g.category || 'health',
+    desc: g.desc || '', log: obj(g.log), qualitySpec: !!g.qualitySpec,
+  });
+  Goals._data  = arr(s.goals).filter(g => g && typeof g === 'object').map(mapGoal);
+  Goals._trash = arr(s.goalsTrash).filter(g => g && typeof g === 'object')
+                   .map(g => Object.assign(mapGoal(g), { deletedAt: g.deletedAt || Date.now() }));
+
+  // Persist everywhere (Goals.save also calls State.save → local storage layers)
+  Goals.save();
+
+  // Re-render the UI
+  POMO.session = 1;
+  ['pomoDuration','shortBreak','longBreak','sessionGoal'].forEach(k=>{ try{ syncDisplayValue(k); }catch(e){} });
+  try{ applyTheme(State.theme, State.lightMode); }catch(e){}
+  try{ applyRankSystemToggle(); }catch(e){}
+  try{ resetTimer(); }catch(e){}
+  try{ auditMissedTasks(); }catch(e){}
+  try{ updateDashboard(); }catch(e){}
+  try{ renderTaskList(); }catch(e){}
+  try{ renderPlanner(); }catch(e){}
+  try{ renderNotesList(); }catch(e){}
+  try{ Goals._updateTrashBadge(); Goals._renderHero(); Goals.render(); }catch(e){}
+  if(document.getElementById('stats').classList.contains('active')){ try{ updateStats(); }catch(e){} }
+  return true;
+}
+
+document.getElementById('exportDataBtn')?.addEventListener('click', exportUserData);
+
+(function wireImport(){
+  const btn = document.getElementById('importDataBtn');
+  const input = document.getElementById('importDataFile');
+  if(!btn || !input) return;
+  btn.addEventListener('click', () => { input.value = ''; input.click(); });
+  input.addEventListener('change', () => {
+    const file = input.files && input.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onerror = () => toast('Could not read that file', 'warn');
+    reader.onload = () => {
+      let parsed;
+      try{ parsed = JSON.parse(reader.result); }
+      catch(e){ toast('That file is not valid JSON', 'warn'); return; }
+      if(!confirm('Importing will replace ALL your current tasks, notes, planner blocks, habits, stats, and settings with the data in this file. Continue?')) return;
+      try{
+        importUserData(parsed);
+        toast('Data imported', 'success');
+      }catch(e){
+        console.warn('[Import] failed', e);
+        toast(e.message || 'Import failed', 'warn');
+      }
+    };
+    reader.readAsText(file);
+  });
+})();
+
 // ── INIT ──
 (async()=>{
   await State.load();
+  if(exampleMode){
+    seedExampleData();
+    $('exampleWorkspaceBanner').hidden=false;
+    const workspaceUrl=new URL(location.href);
+    workspaceUrl.searchParams.delete('example');
+    $('exitExampleWorkspace').href=workspaceUrl.href;
+    document.title='Example workspace · Focus';
+  }
+  applyAppearance();
   applyTheme(State.theme,State.lightMode);
   applyRankSystemToggle();
   if(!State.rank) State.rank={points:0,events:[]};
@@ -2965,21 +3214,6 @@ document.getElementById('resetAllDataBtn')?.addEventListener('click', async () =
   renderPlanner();
   if(typeof Goals !== 'undefined' && document.getElementById('goals')?.classList.contains('active')) Goals.render();
 
-  // Seed demo data on first run only
-  if(!State.hasEverRun){
-    State.tasks=[
-      {id:1,name:"Review weekly goals and plan today's priorities",category:'work',priority:'high',effort:'short',due:todayStr(),done:false,created:todayStr()},
-      {id:2,name:"Complete Chapter 4 of Deep Work",category:'study',priority:'medium',effort:'deep',due:'',done:false,created:todayStr()},
-      {id:3,name:"Morning workout — 30 min",category:'health',priority:'medium',effort:'short',due:todayStr(),done:true,created:todayStr()},
-      {id:4,name:"Reply to client emails",category:'work',priority:'low',effort:'quick',due:'',done:false,created:todayStr()},
-    ];
-    const today=todayStr();
-    State.stats.focusMinutesByDay[today]=50; State.stats.totalPomodoros=2;
-    State.stats.currentStreak=1; State.stats.bestStreak=1; State.stats.lastFocusDay=today;
-    State.notes=[{id:1,title:'Welcome to FOCUS',body:"This is your notes page.\n\nUse it for:\n- Brain dumps\n- Study notes\n- Ideas and thoughts\n- Daily journaling\n\nNotes auto-save as you type.",category:'general',color:'default',created:Date.now(),updated:Date.now()}];
-    State.hasEverRun = true;
-    State.save(); updateDashboard(); renderTaskList();
-  }
   renderNotesList();
 })();
 
@@ -3067,20 +3301,6 @@ document.querySelectorAll('.pomo-tab').forEach(tab => {
   observer.observe(log, { childList: true });
 })();
 
-// ── 5. TOAST HIDE ANIMATION ──
-(function patchToast(){
-  const t = document.getElementById('toast');
-  if(!t) return;
-  // Watch for removal of .show class and add .hiding briefly
-  const observer = new MutationObserver(() => {
-    if(!t.classList.contains('show') && !t.classList.contains('hiding')){
-      t.classList.add('hiding');
-      setTimeout(() => t.classList.remove('hiding'), 320);
-    }
-  });
-  observer.observe(t, { attributes: true, attributeFilter: ['class'] });
-})();
-
 // ── 6. MONTH GRID — stagger day pop-in on each render ──
 (function patchMonthGrid(){
   const orig = window.renderMonthGrid;
@@ -3108,83 +3328,6 @@ document.querySelectorAll('.pomo-tab').forEach(tab => {
     });
   });
   obs.observe(bars, { childList: true });
-})();
-
-// ── 8. NAV ICON BOUNCE on click ──
-document.querySelectorAll('.nav-item, .mobile-nav-item').forEach(item => {
-  item.addEventListener('click', function(){
-    const icon = this.querySelector('.nav-icon, .mnav-icon');
-    if(!icon) return;
-    icon.style.animation = 'none';
-    requestAnimationFrame(() => {
-      icon.style.animation = 'iconBounce 0.5s ease';
-    });
-  });
-});
-
-// ── 9. BUTTON PRESS ripple on primary buttons ──
-document.querySelectorAll('.add-task-btn, .mini-btn, .ctrl-btn.primary').forEach(btn => {
-  btn.addEventListener('click', function(e){
-    const ripple = document.createElement('span');
-    ripple.style.cssText = `
-      position:absolute;
-      border-radius:50%;
-      background:rgba(255,255,255,0.25);
-      width:100px;height:100px;
-      left:${e.offsetX - 50}px;
-      top:${e.offsetY - 50}px;
-      pointer-events:none;
-      transform:scale(0);
-      animation:btnRipple 0.55s ease-out forwards;
-    `;
-    const pos = getComputedStyle(this).position;
-    if(pos === 'static') this.style.position = 'relative';
-    this.style.overflow = 'hidden';
-    this.appendChild(ripple);
-    setTimeout(() => ripple.remove(), 600);
-  });
-});
-
-// ── 10. STAT VALUE number-count-up on dashboard load ──
-(function patchStatCountUp(){
-  function countUp(el, target, onDone, suffix=''){
-    const isTime = target.includes('h');
-    if(isTime) { el.textContent = target; if(onDone) onDone(); return; }
-    const num = parseInt(target);
-    if(isNaN(num) || num === 0) { el.textContent = target; if(onDone) onDone(); return; }
-    const dur = 900;
-    const step = 16;
-    const steps = dur / step;
-    const inc = num / steps;
-    let cur = 0;
-    const timer = setInterval(() => {
-      cur = Math.min(cur + inc, num);
-      el.textContent = Math.round(cur) + suffix;
-      if(cur >= num){ el.textContent = target; clearInterval(timer); if(onDone) onDone(); }
-    }, step);
-  }
-
-  // Observe stat value elements for text changes
-  ['todayFocusTime','tasksCompleted','streakDays','pomodoroCount'].forEach(id => {
-    const el = document.getElementById(id);
-    if(!el) return;
-    let prev = '';
-    const obs = new MutationObserver(() => {
-      const cur = el.textContent;
-      if(cur !== prev){
-        const target = cur;
-        prev = cur; // lock prev BEFORE countUp writes intermediate values
-        if(id === 'streakDays' || id === 'pomodoroCount'){
-          obs.disconnect(); // pause observer during animation to prevent feedback loop
-          countUp(el, target, () => {
-            prev = el.textContent; // sync prev after animation completes
-            obs.observe(el, { childList: true, characterData: true, subtree: true });
-          });
-        }
-      }
-    });
-    obs.observe(el, { childList: true, characterData: true, subtree: true });
-  });
 })();
 
 // ── 11. CARD entrance on section switch ──
@@ -3222,525 +3365,6 @@ document.querySelectorAll('.add-task-btn, .mini-btn, .ctrl-btn.primary').forEach
   });
   obs.observe(plannerSection, { childList: true, subtree: true });
 })();
-// ══════════════════════════════════════════════════════
-//  AI GOALS — Goal Analysis, Focus Patterns, Review
-// ══════════════════════════════════════════════════════
-(function initGoals(){
-
-  /* ── Helpers ── */
-  function loadingHTML(msg){
-    return `<div class="ai-loading"><div class="ai-loading-dots"><span></span><span></span><span></span></div><span>${msg}</span></div>`;
-  }
-
-  function renderMarkdown(text){
-    // Minimal markdown-to-HTML: ##/### headings, **bold**, bullet lists
-    return text
-      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/^[-•] (.+)$/gm, '<li>$1</li>')
-      .replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`)
-      .replace(/\n{2,}/g, '</p><p>')
-      .replace(/^(?!<[hup])/gm, '')
-      .replace(/(<p><\/p>)/g, '')
-      .trim();
-  }
-
-  /* ── Gather app data as a context string ── */
-  function buildAppContext(){
-    const now = new Date();
-    const todayKey = todayStr();
-
-    // Tasks summary
-    const tasks = State.tasks || [];
-    const doneTasks = tasks.filter(t=>t.status==='done');
-    const pendingTasks = tasks.filter(t=>t.status!=='done');
-    const overdueTasks = pendingTasks.filter(t=>t.due && t.due < todayKey);
-
-    // Focus minutes by day — last 30 days
-    const fmbd = State.stats.focusMinutesByDay || {};
-    const dayEntries = Object.entries(fmbd)
-      .sort((a,b)=>a[0].localeCompare(b[0]))
-      .slice(-30);
-    const totalFocusMins = dayEntries.reduce((s,[,v])=>s+v, 0);
-
-    // Day-of-week pattern
-    const dowMap = {0:'Sun',1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat'};
-    const dowTotals = {Mon:0,Tue:0,Wed:0,Thu:0,Fri:0,Sat:0,Sun:0};
-    const dowCounts = {Mon:0,Tue:0,Wed:0,Thu:0,Fri:0,Sat:0,Sun:0};
-    dayEntries.forEach(([d,mins])=>{
-      const dt = new Date(d+'T12:00:00');
-      const k = dowMap[dt.getDay()];
-      dowTotals[k] += mins; dowCounts[k]++;
-    });
-    const dowAvg = Object.entries(dowTotals).map(([k,v])=>`${k}: ${dowCounts[k]?Math.round(v/dowCounts[k]):0} min`).join(', ');
-
-    // Planner blocks summary
-    const allBlocks = Object.values(State.planner.blocks||{}).flat();
-    const blockTypes = {};
-    allBlocks.forEach(b=>{ blockTypes[b.type]=(blockTypes[b.type]||0)+1; });
-    const blockSummary = Object.entries(blockTypes).map(([t,c])=>`${t}: ${c}`).join(', ');
-
-    // Notes count
-    const notesCount = (State.notes||[]).length;
-
-    // Stats
-    const streak = State.stats.currentStreak || 0;
-    const pomodoros = State.stats.totalPomodoros || 0;
-    const missedTasks = (State.stats.missedTasks||[]).length;
-    const doneOnTime = (State.stats.doneOnTimeTasks||[]).length;
-
-    // This week focus
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - now.getDay() + 1);
-    const weekMins = Array.from({length:7},(_,i)=>{
-      const d = new Date(weekStart); d.setDate(weekStart.getDate()+i);
-      return fmbd[dateStr(d)]||0;
-    }).reduce((a,b)=>a+b,0);
-
-    // This month focus
-    const monthPrefix = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-    const monthMins = dayEntries.filter(([d])=>d.startsWith(monthPrefix)).reduce((s,[,v])=>s+v,0);
-
-    return `
-APP DATA SUMMARY (today: ${todayKey}):
-- Total tasks: ${tasks.length} | Done: ${doneTasks.length} | Pending: ${pendingTasks.length} | Overdue: ${overdueTasks.length}
-- Task categories: ${[...new Set(tasks.map(t=>t.category))].join(', ')||'none'}
-- High/critical priority pending: ${pendingTasks.filter(t=>t.priority==='critical'||t.priority==='high').length}
-- Focus this week: ${Math.round(weekMins/60*10)/10} hours (${weekMins} min)
-- Focus this month: ${Math.round(monthMins/60*10)/10} hours (${monthMins} min)
-- Total focus (last 30 days): ${Math.round(totalFocusMins/60*10)/10} hours
-- Avg focus by day of week: ${dowAvg}
-- Current streak: ${streak} days | Total pomodoros: ${pomodoros}
-- Tasks done on time: ${doneOnTime} | Missed/overdue: ${missedTasks}
-- Planner block types: ${blockSummary||'none'}
-- Notes: ${notesCount}
-- Pending tasks sample: ${pendingTasks.slice(0,8).map(t=>`"${t.text}"(${t.priority||'?'},${t.category||'?'}${t.due?',due:'+t.due:''})`).join('; ')||'none'}
-`.trim();
-  }
-
-  /* ── Call Claude API ── */
-  async function callClaude(systemPrompt, userMessage){
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }]
-      })
-    });
-    if(!resp.ok) throw new Error(`API error ${resp.status}`);
-    const data = await resp.json();
-    return data.content.map(b=>b.text||'').join('');
-  }
-
-  /* ── 1. GOAL BREAKDOWN ── */
-  const analyseGoalBtn = $('analyseGoalBtn');
-  const goalInputText = $('goalInputText');
-  const goalAnalysisResult = $('goalAnalysisResult');
-  const goalTasksPreview = $('goalTasksPreview');
-  const goalTasksList = $('goalTasksList');
-  const addAllGoalTasksBtn = $('addAllGoalTasksBtn');
-  let suggestedTasks = [];
-
-  if(analyseGoalBtn){
-    analyseGoalBtn.addEventListener('click', async ()=>{
-      const goal = (goalInputText.value||'').trim();
-      if(!goal){ toast('Please describe your goal first', 'warn'); return; }
-      const category = $('goalCategory').value;
-      const timeframe = $('goalTimeframe').value;
-
-      analyseGoalBtn.disabled = true;
-      analyseGoalBtn.textContent = '◬ Analysing…';
-      goalAnalysisResult.style.display = 'block';
-      goalAnalysisResult.innerHTML = loadingHTML('Breaking down your goal…');
-      goalTasksPreview.style.display = 'none';
-
-      const appCtx = buildAppContext();
-      const system = `You are an expert productivity coach embedded in a focus/task app called Focus. 
-The user has provided their goal. Your job is to:
-1. Write a short encouraging analysis (2-3 sentences) of the goal's feasibility given their data.
-2. Output a JSON block of suggested tasks to achieve the goal.
-
-Format your response EXACTLY like this — no other text:
-<analysis>
-Your 2-3 sentence analysis here using markdown (**bold** for key points).
-</analysis>
-<tasks>
-[
-  {"text": "Task title", "priority": "high", "category": "${category}", "due": "YYYY-MM-DD or empty"},
-  ...
-]
-</tasks>
-Generate 5-10 specific, actionable tasks. Use realistic due dates relative to today (${todayStr()}) within the ${timeframe} timeframe. Keep task titles concise (under 60 chars). Prioritise appropriately.`;
-
-      try{
-        const raw = await callClaude(system, `My goal: ${goal}\nTimeframe: ${timeframe}\nCategory: ${category}\n\nMy current productivity data:\n${appCtx}`);
-
-        // Parse analysis
-        const analysisMatch = raw.match(/<analysis>([\s\S]*?)<\/analysis>/);
-        const tasksMatch = raw.match(/<tasks>([\s\S]*?)<\/tasks>/);
-
-        if(analysisMatch){
-          goalAnalysisResult.innerHTML = `<div class="ai-result-body"><p>${renderMarkdown(analysisMatch[1].trim())}</p></div>`;
-        } else {
-          goalAnalysisResult.innerHTML = `<div class="ai-result-body"><p>${renderMarkdown(raw.substring(0,400))}</p></div>`;
-        }
-
-        // Parse tasks
-        if(tasksMatch){
-          try{
-            suggestedTasks = JSON.parse(tasksMatch[1].trim());
-            goalTasksList.innerHTML = '';
-            suggestedTasks.forEach((t,i)=>{
-              const li = document.createElement('li');
-              li.className = 'goal-task-item';
-              li.innerHTML = `<input type="checkbox" checked data-idx="${i}"><span class="gtask-text">${t.text}</span><span class="gtask-meta">${t.priority||'medium'} · ${t.category||category}${t.due?' · '+t.due:''}</span>`;
-              goalTasksList.appendChild(li);
-            });
-            goalTasksPreview.style.display = 'block';
-          }catch(e){ console.warn('Tasks parse error',e); }
-        }
-      }catch(e){
-        goalAnalysisResult.innerHTML = `<div class="ai-result-body"><p style="color:var(--red)">Analysis failed. Please try again.</p></div>`;
-        console.error(e);
-      }
-      analyseGoalBtn.disabled = false;
-      analyseGoalBtn.textContent = '◬ Analyse Goal';
-    });
-  }
-
-  /* Add selected tasks to the task list */
-  if(addAllGoalTasksBtn){
-    addAllGoalTasksBtn.addEventListener('click', ()=>{
-      const checked = goalTasksList.querySelectorAll('input[type="checkbox"]:checked');
-      let added = 0;
-      checked.forEach(cb=>{
-        const idx = parseInt(cb.dataset.idx);
-        const t = suggestedTasks[idx];
-        if(!t) return;
-        State.tasks.push({
-          id: Date.now() + Math.random(),
-          text: t.text,
-          category: t.category || 'work',
-          priority: t.priority || 'medium',
-          status: 'not-started',
-          due: t.due || '',
-          created: todayStr(),
-          notes: ''
-        });
-        added++;
-      });
-      if(added){
-        State.save();
-        try{ renderTaskList(); }catch(e){}
-        toast(`${added} task${added>1?'s':''} added ✓`, 'success');
-        goalTasksPreview.style.display = 'none';
-        goalInputText.value = '';
-        goalAnalysisResult.innerHTML = '';
-        goalAnalysisResult.style.display = 'none';
-      } else {
-        toast('Select at least one task', 'warn');
-      }
-    });
-  }
-
-  /* ── 2. FOCUS PATTERN INSIGHTS ── */
-  const analysePatternBtn = $('analysePatternBtn');
-  const patternResult = $('patternResult');
-
-  if(analysePatternBtn){
-    analysePatternBtn.addEventListener('click', async ()=>{
-      analysePatternBtn.disabled = true;
-      analysePatternBtn.textContent = '◬ Analysing…';
-      patternResult.innerHTML = loadingHTML('Detecting your focus patterns…');
-
-      const appCtx = buildAppContext();
-      const system = `You are a productivity intelligence engine inside an app called Focus. 
-Analyse the user's focus and task data and provide sharp, personalised insights.
-
-Structure your response with these exact sections using ### headers:
-### Your Peak Focus Days
-### Your Productivity Patterns  
-### Schedule Recommendations
-### What's Holding You Back
-
-Keep each section to 2-4 sentences. Be specific to the data — avoid generic advice. Use **bold** for key insights. If data is sparse, acknowledge it and give general guidance based on what's available.`;
-
-      try{
-        const raw = await callClaude(system, `My productivity data:\n${appCtx}`);
-        patternResult.innerHTML = `<div class="ai-result-body">${renderMarkdown(raw)}</div>`;
-      }catch(e){
-        patternResult.innerHTML = `<div class="ai-result-body"><p style="color:var(--red)">Analysis failed. Please try again.</p></div>`;
-        console.error(e);
-      }
-      analysePatternBtn.disabled = false;
-      analysePatternBtn.textContent = '◬ Analyse Now';
-    });
-  }
-
-  /* ── 3. WEEKLY / MONTHLY REVIEW ── */
-  const analyseReviewBtn = $('analyseReviewBtn');
-  const reviewResult = $('reviewResult');
-
-  if(analyseReviewBtn){
-    analyseReviewBtn.addEventListener('click', async ()=>{
-      const period = $('reviewPeriod').value;
-      analyseReviewBtn.disabled = true;
-      analyseReviewBtn.textContent = '◬ Analysing…';
-      reviewResult.innerHTML = loadingHTML(`Generating your ${period}ly review…`);
-
-      const appCtx = buildAppContext();
-      const system = `You are an expert productivity coach writing a ${period === 'week' ? 'weekly' : 'monthly'} review inside a focus app called Focus.
-
-Structure your response with these exact sections using ### headers:
-### Overall Performance
-### Focus & Deep Work
-### Task Completion
-### Wins This ${period === 'week' ? 'Week' : 'Month'}
-### Areas to Improve
-### Goals for Next ${period === 'week' ? 'Week' : 'Month'}
-
-Keep each section to 2-4 sentences. Be specific and encouraging. Use **bold** for key numbers and insights. Base everything on the actual data provided — don't invent numbers. If a metric is low, frame it constructively.`;
-
-      try{
-        const raw = await callClaude(system, `Review period: ${period}\n\nMy productivity data:\n${appCtx}`);
-        reviewResult.innerHTML = `<div class="ai-result-body">${renderMarkdown(raw)}</div>`;
-      }catch(e){
-        reviewResult.innerHTML = `<div class="ai-result-body"><p style="color:var(--red)">Analysis failed. Please try again.</p></div>`;
-        console.error(e);
-      }
-      analyseReviewBtn.disabled = false;
-      analyseReviewBtn.textContent = '◬ Analyse Now';
-    });
-  }
-
-})();
-
-// ══════════════════════════════════════════════════════
-//  SUPABASE AUTH — Google OAuth
-// ══════════════════════════════════════════════════════
-// ══════════════════════════════════════════════
-//  SupaSync — cloud read/write helper
-// ══════════════════════════════════════════════
-const SupaSync = {
-  _sb: null,        // supabase client, set once lib loads
-  _uid: null,       // current user id
-  _pushTimer: null, // debounce handle
-
-  init(sb){ this._sb = sb; },
-
-  setUser(uid){ this._uid = uid; },
-
-  // Pull cloud state and merge into local State, then re-render
-  async pull(){
-    if(!this._sb || !this._uid) return;
-    try{
-      const { data, error } = await this._sb
-        .from('user_data')
-        .select('state')
-        .eq('user_id', this._uid)
-        .single();
-      if(error || !data) return;
-      const s = typeof data.state === 'string' ? JSON.parse(data.state) : data.state;
-      if(!s || !Object.keys(s).length) return;
-      // Merge cloud into State
-      if(s.tasks)         State.tasks         = s.tasks;
-      if(s.planner)       State.planner.blocks = s.planner;
-      if(s.blockTrash)    State.blockTrash     = s.blockTrash;
-      if(s.stats)         Object.assign(State.stats, s.stats);
-      if(s.pomo)          Object.assign(State.pomo.durations, s.pomo.durations||{});
-      if(s.notes)         State.notes         = s.notes;
-      if(s.theme)         State.theme         = s.theme;
-      if(s.lightMode !== undefined) State.lightMode = s.lightMode;
-      if(s.customColumns) State.customColumns = s.customColumns;
-      if(s.hasEverRun !== undefined) State.hasEverRun = s.hasEverRun;
-      if(s.rankSystemEnabled !== undefined) State.rankSystemEnabled = s.rankSystemEnabled;
-      if(s.rank)          State.rank          = s.rank;
-      // Goals are stored in their own module — restore them from cloud data if present
-      if(s.goals && Array.isArray(s.goals) && typeof Goals !== 'undefined'){
-        // Merge: cloud wins for any goal by id, but keep local-only goals too
-        const cloudIds = s.goals.map(g=>g.id);
-        const localOnly = Goals._data.filter(g=>!cloudIds.includes(g.id));
-        Goals._data = [...s.goals, ...localOnly];
-        // Write merged result to localStorage directly (avoid triggering push loop)
-        try{ localStorage.setItem(Goals._storageKey, JSON.stringify(Goals._data)); }catch(e){}
-        try{ sessionStorage.setItem(Goals._storageKey, JSON.stringify(Goals._data)); }catch(e){}
-      }
-      if(s.goalsTrash && Array.isArray(s.goalsTrash) && typeof Goals !== 'undefined'){
-        Goals._trash = s.goalsTrash;
-        try{ localStorage.setItem(Goals._trashKey, JSON.stringify(Goals._trash)); }catch(e){}
-      }
-      // Persist locally too
-      State.save();
-      // Re-render everything with correct function names
-      try{ applyTheme(State.theme, State.lightMode); }catch(e){}
-      try{ applyRankSystemToggle(); }catch(e){}
-      try{ updateDashboard(); }catch(e){}
-      try{ renderTaskList(); }catch(e){}
-      try{ renderNotesList(); }catch(e){}
-      try{ renderPlanner(); }catch(e){}
-      if(document.getElementById('stats').classList.contains('active')){
-        try{ updateStats(); }catch(e){}
-      }
-      // Re-render goals — always update hero data, full render only if section visible
-      if(typeof Goals !== 'undefined'){
-        try{ Goals._updateTrashBadge(); }catch(e){}
-        try{ Goals._renderHero(); }catch(e){}
-        if(document.getElementById('goals')?.classList.contains('active')){
-          try{ Goals.render(); }catch(e){}
-        }
-      }
-      toast('Data synced from cloud ☁️', 'success');
-    }catch(e){ console.warn('[SupaSync] pull error', e); }
-  },
-
-  // Debounced push — waits 2 s after last save before writing to Supabase
-  push(jsonData){
-    if(!this._sb || !this._uid) return;
-    clearTimeout(this._pushTimer);
-    this._pushTimer = setTimeout(async ()=>{
-      try{
-        await this._sb.from('user_data').upsert({
-          user_id: this._uid,
-          state:   jsonData,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_id' });
-      }catch(e){ console.warn('[SupaSync] push error', e); }
-    }, 2000);
-  },
-};
-
-(function initSupabaseAuth(){
-  const SUPABASE_URL  = 'https://wrelecqwsovhevioмktf.supabase.co'.replace('\u043c','m');
-  const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndyZWxlY3F3c292aGV2aW9ta3RmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzI3NjUsImV4cCI6MjA5NDQwODc2NX0.Vj2OcbMUvXcpNO7JkJikotJIjI5D41AYV-oFuJc8H6A';
-
-  function waitForLib(cb){
-    if(window.supabase && window.supabase.createClient){ cb(); return; }
-    let tries=0;
-    const iv=setInterval(()=>{
-      tries++;
-      if(window.supabase && window.supabase.createClient){ clearInterval(iv); cb(); }
-      else if(tries>100){ clearInterval(iv); console.warn('[Auth] Supabase lib not found'); }
-    },50);
-  }
-
-  waitForLib(function(){
-    // ── IMPORTANT: implicit flow only — GitHub Pages is a static host with no
-    //    server-side code. PKCE sends a ?code= that needs a backend to exchange;
-    //    on a static host that code is never exchanged and the session is never
-    //    created. Implicit flow puts the tokens directly in the #hash fragment,
-    //    which Supabase reads client-side. Works on desktop AND mobile Safari. ──
-    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
-      auth: {
-        flowType: 'implicit',
-        detectSessionInUrl: true,  // reads #access_token from URL on redirect
-        persistSession: true,
-        storage: window.localStorage,
-      }
-    });
-    SupaSync.init(sb);
-
-    // Redirect back to the same page, stripping any existing hash/query so the
-    // URL stays clean. Supabase appends the #access_token fragment after this.
-    function getRedirectURL(){
-      return window.location.origin + window.location.pathname;
-    }
-
-    // ── UI helpers ──
-    function showSignedIn(user, doPull){
-      const out=$('authSignedOut'), inn=$('authSignedIn');
-      if(out) out.style.display='none';
-      if(inn) inn.style.display='';
-      const meta = user.user_metadata || {};
-      const name  = meta.full_name || meta.name || user.email || 'User';
-      const email = user.email || '';
-      const avatar= meta.avatar_url || meta.picture || '';
-      const el=$('authUserName');   if(el) el.textContent = name;
-      const ee=$('authUserEmail');  if(ee) ee.textContent = email;
-      const av=$('authAvatar');
-      if(av){
-        if(avatar){
-          av.style.backgroundImage   = `url(${avatar})`;
-          av.style.backgroundSize    = 'cover';
-          av.style.backgroundPosition= 'center';
-          av.textContent = '';
-        } else {
-          av.style.backgroundImage = 'none';
-          av.textContent = name.charAt(0).toUpperCase();
-        }
-      }
-      SupaSync.setUser(user.id);
-      if(doPull) SupaSync.pull();
-    }
-
-    function showSignedOut(){
-      const out=$('authSignedOut'), inn=$('authSignedIn');
-      if(out) out.style.display='';
-      if(inn) inn.style.display='none';
-      SupaSync.setUser(null);
-    }
-
-    // ── Sign-in button ──
-    const signInBtn=$('googleSignInBtn');
-    if(signInBtn){
-      signInBtn.addEventListener('click', async ()=>{
-        signInBtn.disabled = true;
-        signInBtn.textContent = 'Connecting…';
-        const { error } = await sb.auth.signInWithOAuth({
-          provider: 'google',
-          options: { redirectTo: getRedirectURL() }
-        });
-        if(error){
-          toast('Sign-in failed: '+error.message, 'warn');
-          signInBtn.disabled = false;
-          signInBtn.innerHTML = `<svg class="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg> Continue with Google`;
-        }
-        // On success the browser navigates away — no further action needed here
-      });
-    }
-
-    // ── Sign-out button ──
-    const signOutBtn=$('googleSignOutBtn');
-    if(signOutBtn){
-      signOutBtn.addEventListener('click', async ()=>{
-        await sb.auth.signOut();
-        showSignedOut();
-        toast('Signed out', 'normal');
-      });
-    }
-
-    // ── Auth state listener ──
-    // onAuthStateChange is the single source of truth. It fires:
-    //   • INITIAL_SESSION  — on every page load (session from localStorage or URL hash)
-    //   • SIGNED_IN        — after the OAuth redirect lands back here with #access_token
-    //   • TOKEN_REFRESHED  — when the access token is silently refreshed
-    //   • SIGNED_OUT       — after signOut()
-    //
-    // detectSessionInUrl:true means Supabase reads and exchanges the #access_token
-    // from the URL *before* firing SIGNED_IN, so by the time we get here the
-    // session is already persisted in localStorage — works on mobile Safari too.
-    let _pullDone = false; // guard: only pull cloud data once per page load
-    sb.auth.onAuthStateChange((event, session)=>{
-      if(session && session.user){
-        // Pull data on first sign-in OR on the initial page load after a redirect
-        const isFirstLoad = (event === 'SIGNED_IN' || event === 'INITIAL_SESSION');
-        const shouldPull  = isFirstLoad && !_pullDone;
-        if(shouldPull) _pullDone = true;
-        showSignedIn(session.user, shouldPull);
-        // Clean the URL *after* Supabase has already read the hash/code
-        if(window.location.hash.includes('access_token') || window.location.search.includes('code=')){
-          history.replaceState(null, '', window.location.pathname);
-        }
-      } else {
-        showSignedOut();
-      }
-    });
-  });
-})();
-
 /* ═══════════════════════════════════════════════════════════════
    GOALS — REDESIGN v2
    Drop-in replacement for the previous `Goals` module + wiring.
@@ -3765,6 +3389,14 @@ const GOAL_CATEGORIES = [
   {id:'sleep',       label:'Sleep',       emoji:'😴'},
   {id:'nutrition',   label:'Nutrition',   emoji:'🥗'},
 ];
+const QUALITY_LEVELS = [
+  { n:1, label:'Awful', color:'#ff8a8a' }, // light red
+  { n:2, label:'Bad',   color:'#ff9f43' }, // orange
+  { n:3, label:'Mid',   color:'#ffd84d' }, // yellow
+  { n:4, label:'Good',  color:'#8be28b' }, // light green
+  { n:5, label:'Perfect', color:'#3ae0e8' } // aqua blue
+];
+const Q_MAP = Object.fromEntries(QUALITY_LEVELS.map(q => [q.n, q]));
 const CAT_MAP = Object.fromEntries(GOAL_CATEGORIES.map(c => [c.id, c]));
 
 const Goals = {
@@ -3772,7 +3404,44 @@ const Goals = {
   _trash: [],
   _activeId: null,
   _view: 'cards', // cards | week | month
-  _logOffset: 0,   // 0 = today, -1 = yesterday, etc.
+  _selDate: null,  // date being logged on the detail page (null = today)
+  _monthOff: 0,    // month offset shown on the detail page (0 = current)
+  _ovWeekOff: 0,   // week offset on the Goals Week overview (0 = this week, -1 = last week …)
+  _ovMonthOff: 0,  // month offset on the Goals Month overview (0 = this month)
+  shiftOverview(period, delta){
+    if (period === 'week') {
+      if (this._ovWeekOff + delta > 0) return;
+      this._ovWeekOff += delta;
+      this._renderWeekPane();
+    } else if (period === 'month') {
+      if (this._ovMonthOff + delta > 0) return;
+      this._ovMonthOff += delta;
+      this._renderMonthPane();
+    }
+  },
+  _syncOverviewNav(){
+    document.querySelectorAll('[data-goals-period]').forEach(b => {
+      const off = b.dataset.goalsPeriod === 'week' ? this._ovWeekOff : this._ovMonthOff;
+      if (Number(b.dataset.goalsStep) > 0) b.disabled = off >= 0;
+    });
+  },
+  _selKey(){ const t=this.todayStr(); return (this._selDate && this._selDate<=t) ? this._selDate : t; },
+  openDetail(id, date){
+    this._selDate = (date && date <= this.todayStr()) ? date : null;
+    if (this._selDate) { const d=new Date(this._selDate+'T00:00:00'), n=new Date(); this._monthOff=(d.getFullYear()-n.getFullYear())*12+(d.getMonth()-n.getMonth()); }
+    else this._monthOff = 0;
+    this.renderDetail(id);
+  },
+  selectDate(date){
+    if (date > this.todayStr()) return;
+    this._selDate = date;
+    this.renderDetail(this._activeId);
+  },
+  shiftMonth(delta){
+    if (this._monthOff + delta > 0) return;
+    this._monthOff += delta;
+    this.renderDetail(this._activeId);
+  },
   _storageKey: 'focus_goals_v1',
   _trashKey: 'focus_goals_trash_v1',
 
@@ -3780,6 +3449,7 @@ const Goals = {
 
   /* ── Persistence ───────────────────────────────────────────── */
   load(){
+    if(exampleMode) return;
     // If State.load() already populated _data (from focus_state_v3), keep it.
     // Only read from the legacy goals-specific key if we still have nothing.
     if(!this._data.length){
@@ -3809,6 +3479,7 @@ const Goals = {
       category: g.category || 'health',
       desc: g.desc || '',
       log: g.log || {},
+      qualitySpec: !!g.qualitySpec,
     }));
     this._trash = (this._trash || []).map(g => ({
       id: String(g.id || Date.now()),
@@ -3818,11 +3489,13 @@ const Goals = {
       category: g.category || 'health',
       desc: g.desc || '',
       log: g.log || {},
+      qualitySpec: !!g.qualitySpec,
       deletedAt: g.deletedAt || Date.now(),
     }));
   },
   _saving: false, // re-entrancy guard
   save(){
+    if(exampleMode) return;
     const s = JSON.stringify(this._data);
     try { localStorage.setItem(this._storageKey, s); } catch(e){}
     try { sessionStorage.setItem(this._storageKey, s); } catch(e){}
@@ -3841,7 +3514,6 @@ const Goals = {
   _pad(n){ return String(n).padStart(2,'0'); },
   toKey(d){ return `${d.getFullYear()}-${this._pad(d.getMonth()+1)}-${this._pad(d.getDate())}`; },
   todayStr(){ const n = new Date(); n.setHours(0,0,0,0); return this.toKey(n); },
-  logDateStr(){ const n = new Date(); n.setHours(0,0,0,0); n.setDate(n.getDate() + (this._logOffset||0)); return this.toKey(n); },
   formatDate(str){
     const d = new Date(str+'T00:00:00');
     return d.toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
@@ -3857,40 +3529,13 @@ const Goals = {
       return this.toKey(d);
     });
   },
-  getMonthDates(){
-    const now = new Date();
+  getMonthDates(off){
+    const now = new Date(); now.setDate(1); now.setMonth(now.getMonth() + (off||0));
     const y = now.getFullYear(), m = now.getMonth();
     const days = new Date(y, m+1, 0).getDate();
     return Array.from({length: days}, (_,i) => {
       const d = new Date(y, m, i+1); return this.toKey(d);
     });
-  },
-
-  /* ── Auto-fill missed days ────────────────────────────────── */
-  // For a single habit: stamp every unlogged past day (back to habit creation
-  // or up to 90 days max) as 'miss'. Silently skips future and already-logged days.
-  autoFillMissed(g){
-    const today = this.todayStr();
-    const d = new Date(today+'T00:00:00');
-    let changed = false;
-    // walk backward up to 90 days (or until the habit has no earlier log to anchor to)
-    for (let i = 1; i <= 90; i++) {
-      d.setDate(d.getDate() - 1);
-      const k = this.toKey(d);
-      if (!g.log[k]) {
-        g.log[k] = { status: 'miss', note: '' };
-        changed = true;
-      }
-      // stop once we hit a day that was already logged (habit's history starts there)
-      // actually we just go back 90 days max — simple and predictable
-    }
-    return changed;
-  },
-  // Run autoFillMissed on every habit, save if anything changed
-  autoFillAllMissed(){
-    let any = false;
-    this._data.forEach(g => { if (this.autoFillMissed(g)) any = true; });
-    if (any) this.save();
   },
 
   /* ── Streaks ───────────────────────────────────────────────── */
@@ -4016,6 +3661,7 @@ const Goals = {
 
     const ni = document.getElementById('editGoalNameInput'); if (ni) ni.value = g.name;
     const di = document.getElementById('editGoalDescInput'); if (di) di.value = g.desc || '';
+    const eq = document.getElementById('editGoalQualityToggle'); if (eq) eq.checked = !!g.qualitySpec;
 
     // Icons
     const ip = document.getElementById('editGoalIconPicker');
@@ -4077,6 +3723,7 @@ const Goals = {
     g.icon = this._editIcon;
     g.color = this._editColor;
     g.category = this._editCat;
+    g.qualitySpec = !!document.getElementById('editGoalQualityToggle')?.checked;
     this.save();
     this.closeEditModal();
     this.renderDetail(id);
@@ -4104,7 +3751,7 @@ const Goals = {
       }
     }
 
-    g.log[key] = { status, note: g.log[key]?.note || '' };
+    g.log[key] = { status, note: g.log[key]?.note || '' }; // quality is cleared on status change (only valid for 'done')
 
     // Award new rank points
     const pts = this._habitPts[status] || 0;
@@ -4117,7 +3764,8 @@ const Goals = {
 
   logToday(status){
     const g = this.getById(this._activeId); if (!g) return;
-    const k = this.logDateStr();
+    const k = this._selKey();
+    const isPast = k !== this.todayStr();
     const note = document.getElementById('gdNoteInput')?.value || '';
     const changed = this._applyStatus(g, k, status);
     if (!changed) {
@@ -4128,7 +3776,26 @@ const Goals = {
     this.save();
     this.renderDetail(this._activeId, status);
     const labels = { done:'Done — kept ✓', rest:'Rest day ~', miss:'Missed ✗' };
-    if (typeof toast === 'function') toast(labels[status],'success');
+    const when = isPast ? ` · ${new Date(k+'T00:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'})}` : '';
+    if (typeof toast === 'function') toast(labels[status]+when,'success');
+  },
+  // Quality Specification — rate a completed day 1-5 (click the same rating again to clear)
+  setQuality(id, key, q, e){
+    if (e) e.stopPropagation();
+    const g = this.getById(id); if (!g || !g.qualitySpec) return;
+    const entry = g.log[key];
+    if (!entry || entry.status !== 'done') {
+      if (typeof toast === 'function') toast('Mark the day as Done first, then rate its quality','normal');
+      return;
+    }
+    if (entry.quality === q) delete entry.quality; else entry.quality = q;
+    this.save();
+    if (document.getElementById('goal-detail')?.classList.contains('active')) this.renderDetail(id);
+    else this.render();
+    if (typeof toast === 'function') toast(entry.quality ? `Quality: ${entry.quality} — ${Q_MAP[entry.quality].label}` : 'Quality rating cleared','success');
+  },
+  _qualityScaleHTML(selected, enabled){
+    return QUALITY_LEVELS.map(q => `<button type="button" class="q-btn${selected === q.n ? ' is-active' : ''}" data-q="${q.n}" style="--qc:${q.color}" ${enabled ? '' : 'disabled'} title="${q.n} — ${q.label}" aria-label="Quality ${q.n}: ${q.label}"><span class="q-btn-num">${q.n}</span><span class="q-btn-lbl">${q.label}</span></button>`).join('');
   },
   logFromCard(id, status, e){
     if (e) e.stopPropagation();
@@ -4173,6 +3840,56 @@ const Goals = {
   },
 
   /* ── Tabs ──────────────────────────────────────────────────── */
+  /* ── Quality Overview mode ─────────────────────────────────── */
+  _qMode: false,
+  // Returns how a day box should look for habit g. When Quality Overview is on and the
+  // habit has Quality Specification enabled, rated days show their quality colour
+  // instead of done / rest / missed.
+  _qCell(g, e){
+    if (!this._qMode || !g.qualitySpec) return { status: e ? e.status : '', cls: '', style: '', tip: '' };
+    if (e && e.status === 'done' && Q_MAP[e.quality]) {
+      const q = Q_MAP[e.quality];
+      return { status: '', cls: 'q-rated',
+               style: `background:${q.color};border-color:${q.color};box-shadow:0 0 8px -2px ${q.color};`,
+               tip: ` · Quality ${q.n} — ${q.label}` };
+    }
+    if (e && e.status === 'done') return { status: '', cls: 'q-unrated', style: '', tip: ' · Done, not rated' };
+    return { status: '', cls: 'q-none', style: '', tip: '' };
+  },
+  _renderQualityLegend(){
+    const html = QUALITY_LEVELS.map(q =>
+      `<span class="gm-legend-item"><span class="gm-legend-swatch" style="background:${q.color}"></span>${q.n} · ${q.label}</span>`
+    ).join('') + `<span class="gm-legend-item"><span class="gm-legend-swatch q-unrated-sw"></span>Done, not rated</span>`;
+    ['goalsQualityLegend','gdQualityLegend'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.style.display = this._qMode ? '' : 'none';
+      el.innerHTML = this._qMode ? html : '';
+    });
+  },
+  // Keep the button on the list page and the one inside a habit in sync
+  _syncQualityBtns(){
+    ['goalsQualityBtn','gdQualityBtn'].forEach(id => {
+      const b = document.getElementById(id); if (!b) return;
+      b.classList.toggle('active', this._qMode);
+      b.setAttribute('aria-pressed', String(this._qMode));
+    });
+  },
+  setQualityMode(on){
+    if (on && !this._data.some(g => g.qualitySpec)) {
+      if (typeof toast === 'function') toast('Turn on Quality Specification for a habit first','warn');
+      return;
+    }
+    this._qMode = !!on;
+    if(!exampleMode){
+      try { localStorage.setItem('focus_goals_qmode', on ? '1' : '0'); } catch(e){}
+    }
+    this._syncQualityBtns();
+    this._renderQualityLegend();
+    this.render();
+    // If a habit is open, refresh it too so the toggle works from inside the habit
+    if (document.getElementById('goal-detail')?.classList.contains('active') && this._activeId) this.renderDetail(this._activeId);
+  },
   setView(view){
     this._view = view;
     document.querySelectorAll('#goalsTabs .goals-tab').forEach(btn => {
@@ -4229,20 +3946,22 @@ const Goals = {
       card.className = 'goal-card';
       card.style.setProperty('--gc', g.color);
       card.style.animationDelay = `${Math.min(idx, 8) * 0.05}s`;
-      card.onclick = () => { this._logOffset = 0; this.renderDetail(g.id); };
+      card.onclick = () => this.openDetail(g.id);
 
       const ribbon = weekDates.map((d, i) => {
         const e = g.log[d];
+        const qc = this._qCell(g, e);
         const cls = [
           'gc-day-dot',
-          e ? e.status : '',
+          qc.status,
+          qc.cls,
           d > today ? 'future' : '',
           d === today ? 'today' : '',
           (opts.flashId === g.id && d === today && opts.flashStatus) ? 'just-logged' : ''
         ].filter(Boolean).join(' ');
-        return `<div class="gc-day">
+        return `<div class="gc-day" data-date="${d}"${d <= today ? ' title="Log ' + d + qc.tip + '" style="cursor:pointer"' : ''}>
           <span class="gc-day-label">${dayNames[i]}</span>
-          <div class="${cls}"></div>
+          <div class="${cls}"${qc.style ? ` style="${qc.style}"` : ''}></div>
         </div>`;
       }).join('');
 
@@ -4269,7 +3988,23 @@ const Goals = {
           <button type="button" class="gc-act rest ${ts==='rest'?'is-active':''}" data-act="rest">~ Rest</button>
           <button type="button" class="gc-act miss ${ts==='miss'?'is-active':''}" data-act="miss">× Miss</button>
         </div>
+        ${g.qualitySpec ? `<div class="gc-quality" data-qrow>
+          <span class="gc-quality-label">Quality</span>
+          <div class="q-scale mini">${this._qualityScaleHTML(ts==='done' ? todayEntry.quality : null, ts==='done')}</div>
+        </div>` : ''}
       `;
+      card.querySelectorAll('.gc-quality .q-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => this.setQuality(g.id, today, parseInt(btn.dataset.q,10), e));
+      });
+      card.querySelector('.gc-quality')?.addEventListener('click', e => e.stopPropagation());
+      card.querySelectorAll('.gc-day[data-date]').forEach(el => {
+        el.addEventListener('click', (e) => {
+          const dt = el.dataset.date;
+          if (dt > today) return;
+          e.stopPropagation();
+          this.openDetail(g.id, dt);
+        });
+      });
       card.querySelectorAll('.gc-act').forEach(btn => {
         btn.addEventListener('click', (e) => this.logFromCard(g.id, btn.dataset.act, e));
       });
@@ -4284,7 +4019,8 @@ const Goals = {
     const matrix = document.getElementById('goalsWeekMatrix');
     const range  = document.getElementById('goalsWeekRange');
     if (!matrix) return;
-    const days = this.getWeekDates();
+    const ref = new Date(); ref.setDate(ref.getDate() + this._ovWeekOff * 7);
+    const days = this.getWeekDates(ref);
     const today = this.todayStr();
 
     matrix.innerHTML = this._data.map(g => `
@@ -4296,13 +4032,15 @@ const Goals = {
         <div class="gm-cells week">
           ${days.map(d => {
             const e = g.log[d];
+            const qc = this._qCell(g, e);
             const cls = [
               'gm-cell',
-              e ? e.status : '',
+              qc.status,
+              qc.cls,
               d > today ? 'future' : '',
               d === today ? 'today' : ''
             ].filter(Boolean).join(' ');
-            return `<div class="${cls}" title="${d}"></div>`;
+            return `<div class="${cls}"${qc.style ? ` style="${qc.style}"` : ''} title="${d}${qc.tip}"></div>`;
           }).join('')}
         </div>
       </div>
@@ -4310,8 +4048,9 @@ const Goals = {
 
     if (range) {
       const f = k => new Date(k+'T00:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'});
-      range.textContent = `${f(days[0])} — ${f(days[6])}`;
+      range.textContent = `${f(days[0])} — ${f(days[6])}` + (this._ovWeekOff === 0 ? ' (this week)' : '');
     }
+    this._syncOverviewNav();
   },
 
   _renderMonthPane(){
@@ -4319,18 +4058,19 @@ const Goals = {
     const head   = document.getElementById('goalsMonthHead');
     const label  = document.getElementById('goalsMonthLabel');
     if (!matrix) return;
-    const days = this.getMonthDates();
+    const mOff = this._ovMonthOff;
+    const days = this.getMonthDates(mOff);
     const today = this.todayStr();
     const isMobile = window.innerWidth < 768;
+    const mBase = new Date(); mBase.setDate(1); mBase.setMonth(mBase.getMonth() + mOff);
 
-    if (label) label.textContent = new Date().toLocaleDateString(undefined,{month:'long',year:'numeric'});
+    if (label) label.textContent = mBase.toLocaleDateString(undefined,{month:'long',year:'numeric'});
 
     if (isMobile) {
       // Mobile: render a calendar card per goal (like the detail page)
       if (head) head.style.display = 'none';
       const dow = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-      const now = new Date();
-      const firstDow = new Date(now.getFullYear(), now.getMonth(), 1).getDay();
+      const firstDow = mBase.getDay();
       const offset = (firstDow + 6) % 7;
 
       matrix.className = 'gm-mobile-month-list';
@@ -4340,13 +4080,15 @@ const Goals = {
         for (let i = 0; i < offset; i++) cells += `<div class="gd-month-cell empty"></div>`;
         cells += days.map(d => {
           const e = g.log[d];
+          const qc = this._qCell(g, e);
           const cls = [
             'gd-month-cell',
-            e ? e.status : '',
+            qc.status,
+            qc.cls,
             d === today ? 'today' : ''
           ].filter(Boolean).join(' ');
           const dayNum = parseInt(d.split('-')[2], 10);
-          return `<div class="${cls}" title="${d}">${dayNum}</div>`;
+          return `<div class="${cls}"${qc.style ? ` style="${qc.style}color:#111;"` : ''} title="${d}${qc.tip}">${dayNum}</div>`;
         }).join('');
 
         return `<div class="gm-mobile-month-card" style="--gc:${g.color}">
@@ -4375,13 +4117,15 @@ const Goals = {
           }
           const d = days[i];
           const e = g.log[d];
+          const qc = this._qCell(g, e);
           const cls = [
             'gm-cell',
-            e ? e.status : '',
+            qc.status,
+            qc.cls,
             d > today ? 'future' : '',
             d === today ? 'today' : ''
           ].filter(Boolean).join(' ');
-          cells.push(`<div class="${cls}" title="${d}"></div>`);
+          cells.push(`<div class="${cls}"${qc.style ? ` style="${qc.style}"` : ''} title="${d}${qc.tip}"></div>`);
         }
         return `<div class="gm-row" style="--gc:${g.color}">
           <div class="gm-row-head">
@@ -4392,19 +4136,22 @@ const Goals = {
         </div>`;
       }).join('');
     }
+    this._syncOverviewNav();
   },
 
   /* ── Detail page ───────────────────────────────────────────── */
   renderDetail(id, flashStatus){
     this._activeId = id;
     const g = this.getById(id); if (!g) return;
-    if (this.autoFillMissed(g)) this.save();
     showSection('goal-detail');
 
     const today = this.todayStr();
-    const logDate = this.logDateStr();
-    const weekDates = this.getWeekDates();
-    const monthDates = this.getMonthDates();
+    const selKey = this._selKey();
+    const isToday = selKey === today;
+    const weekDates = this.getWeekDates(selKey + 'T00:00:00');
+    const monthOff = this._monthOff || 0;
+    const monthDates = this.getMonthDates(monthOff);
+    const monthBase = new Date(); monthBase.setDate(1); monthBase.setMonth(monthBase.getMonth() + monthOff);
     const streaks = this.calcStreak(g.log);
 
     const all = Object.values(g.log);
@@ -4415,6 +4162,7 @@ const Goals = {
     // Apply color
     const hero = document.getElementById('gdHero');
     if (hero) hero.style.setProperty('--gc', g.color);
+    document.getElementById('goal-detail')?.style.setProperty('--gc', g.color);
 
     setText('gdIcon', g.icon);
     setText('gdName', g.name);
@@ -4428,34 +4176,58 @@ const Goals = {
     setText('gdRest', rest);
     setText('gdMiss', miss);
 
-    // Date label: show "Today" suffix when on current day
-    const isToday = (logDate === today);
-    const dateLabelFull = this.formatDate(logDate);
-    setText('gdTodayDate', isToday ? `${dateLabelFull} — Today` : dateLabelFull);
+    setText('gdLogTitle', isToday ? 'Log today' : 'Log past day');
+    setText('gdTodayDate', this.formatDate(selKey));
+    const backBtn = document.getElementById('gdBackToday');
+    if (backBtn) {
+      backBtn.style.display = isToday ? 'none' : '';
+      backBtn.onclick = () => { this._selDate = null; this._monthOff = 0; this.renderDetail(this._activeId); };
+    }
     const f = k => new Date(k+'T00:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'});
     setText('gdWeekRange', `${f(weekDates[0])} — ${f(weekDates[6])}`);
-    setText('gdMonthLabel', new Date().toLocaleDateString(undefined,{month:'long',year:'numeric'}));
+    setText('gdMonthLabel', monthBase.toLocaleDateString(undefined,{month:'long',year:'numeric'}));
+    const mPrev = document.getElementById('gdMonthPrev'), mNext = document.getElementById('gdMonthNext');
+    if (mPrev) mPrev.onclick = () => this.shiftMonth(-1);
+    if (mNext) { mNext.onclick = () => this.shiftMonth(1); mNext.disabled = monthOff >= 0; }
 
-    // Date nav buttons
-    const prevBtn = document.getElementById('gdDatePrev');
-    const nextBtn = document.getElementById('gdDateNext');
-    if (prevBtn) prevBtn.onclick = () => { this._logOffset = (this._logOffset||0) - 1; this.renderDetail(id); };
-    if (nextBtn) {
-      nextBtn.disabled = isToday;
-      nextBtn.onclick = () => { if ((this._logOffset||0) < 0) { this._logOffset = (this._logOffset||0) + 1; this.renderDetail(id); } };
-    }
-
-    // Buttons / note — use logDate (may be a past day)
-    const logEntry = g.log[logDate];
+    // Buttons / note
+    const todayEntry = g.log[selKey];
     ['gdBtnDone','gdBtnRest','gdBtnMiss'].forEach(bid => {
       const b = document.getElementById(bid); if (b) b.classList.remove('is-active');
     });
-    if (logEntry) {
+    if (todayEntry) {
       const map = { done:'gdBtnDone', rest:'gdBtnRest', miss:'gdBtnMiss' };
-      document.getElementById(map[logEntry.status])?.classList.add('is-active');
+      document.getElementById(map[todayEntry.status])?.classList.add('is-active');
     }
     const note = document.getElementById('gdNoteInput');
-    if (note) note.value = logEntry?.note || '';
+    if (note) {
+      note.value = todayEntry?.note || '';
+      note.placeholder = isToday ? 'A note for today (optional)…' : 'A note for this day (optional)…';
+    }
+
+    this._syncQualityBtns();
+    this._renderQualityLegend();
+
+    // Quality Specification pane
+    const qPane = document.getElementById('gdQuality');
+    if (qPane) {
+      if (g.qualitySpec) {
+        qPane.style.display = '';
+        const isDone = todayEntry?.status === 'done';
+        const cur = isDone ? todayEntry.quality : null;
+        const scale = document.getElementById('gdQualityScale');
+        scale.innerHTML = this._qualityScaleHTML(cur, isDone);
+        scale.querySelectorAll('.q-btn').forEach(btn => {
+          btn.onclick = (e) => this.setQuality(id, selKey, parseInt(btn.dataset.q,10), e);
+        });
+        const curEl = document.getElementById('gdQualityCurrent');
+        curEl.textContent = cur ? `${cur} — ${Q_MAP[cur].label}` : '—';
+        curEl.style.color = cur ? Q_MAP[cur].color : '';
+        setText('gdQualityHint', isDone ? 'How well did it go? Tap the same number again to clear.' : 'Mark this day as Done to rate its quality.');
+      } else {
+        qPane.style.display = 'none';
+      }
+    }
 
     // Wire log + delete buttons (rebind each render is fine; small surface)
     document.getElementById('gdBtnDone').onclick = () => this.logToday('done');
@@ -4468,72 +4240,57 @@ const Goals = {
     const edit = document.getElementById('gdEditBtn');
     if (edit) edit.onclick = () => this.openEditModal(id);
 
-    // Week visualisation — cells are clickable (past + today only)
+    // Week visualisation
     const weekEl = document.getElementById('gdWeek');
     if (weekEl) {
       const dn = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
       weekEl.innerHTML = weekDates.map((d, i) => {
         const e = g.log[d];
-        const isFuture = d > today;
-        const isSelected = d === logDate;
+        const qc = this._qCell(g, e);
         const cls = [
           'dot',
-          e ? e.status : '',
+          qc.status,
+          qc.cls,
           d === today ? 'today' : '',
-          isSelected ? 'selected' : '',
-          isFuture ? 'future' : '',
+          d === selKey ? 'selected' : '',
+          d > today ? 'future' : 'selectable'
         ].filter(Boolean).join(' ');
         const dayNum = parseInt(d.split('-')[2], 10);
         return `<div class="gd-week-cell">
           <span class="lbl">${dn[i]}</span>
-          <div class="${cls}" title="${d}" data-date="${d}"><span class="num">${dayNum}</span></div>
+          <div class="${cls}"${qc.style ? ` style="${qc.style}color:#111;"` : ''} data-date="${d}" title="${(d > today ? d : 'Log ' + d) + qc.tip}"><span class="num">${dayNum}</span></div>
         </div>`;
       }).join('');
-      weekEl.querySelectorAll('.dot[data-date]').forEach(el => {
-        const d = el.dataset.date;
-        if (d > today) return;
-        el.style.cursor = 'pointer';
-        el.onclick = () => {
-          const diffMs = new Date(d+'T00:00:00') - new Date(today+'T00:00:00');
-          this._logOffset = Math.round(diffMs / 86400000);
-          this.renderDetail(id);
-        };
+      weekEl.querySelectorAll('.dot.selectable').forEach(el => {
+        el.onclick = () => this.selectDate(el.dataset.date);
       });
     }
 
-    // Month grid (with DOW header + leading blanks) — cells are clickable
+    // Month grid (with DOW header + leading blanks)
     const monthEl = document.getElementById('gdMonth');
     if (monthEl) {
       const dow = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-      const now = new Date();
-      const firstDow = new Date(now.getFullYear(), now.getMonth(), 1).getDay();
+      const firstDow = monthBase.getDay();
       const offset = (firstDow + 6) % 7; // shift to Mon-start
       let html = dow.map(d => `<div class="gd-month-dow">${d}</div>`).join('');
       for (let i = 0; i < offset; i++) html += `<div class="gd-month-cell empty"></div>`;
       html += monthDates.map(d => {
         const e = g.log[d];
-        const isFuture = d > today;
-        const isSelected = d === logDate;
+        const qc = this._qCell(g, e);
         const cls = [
           'gd-month-cell',
-          e ? e.status : '',
+          qc.status,
+          qc.cls,
           d === today ? 'today' : '',
-          isSelected ? 'selected' : '',
-          isFuture ? 'future' : '',
+          d === selKey ? 'selected' : '',
+          d > today ? 'future' : 'selectable'
         ].filter(Boolean).join(' ');
         const dayNum = parseInt(d.split('-')[2], 10);
-        return `<div class="${cls}" title="${d}" data-date="${d}">${dayNum}</div>`;
+        return `<div class="${cls}"${qc.style ? ` style="${qc.style}color:#111;"` : ''} data-date="${d}" title="${(d > today ? d : 'Log ' + d) + qc.tip}">${dayNum}</div>`;
       }).join('');
       monthEl.innerHTML = html;
-      monthEl.querySelectorAll('.gd-month-cell[data-date]').forEach(el => {
-        const d = el.dataset.date;
-        if (d > today) return;
-        el.style.cursor = 'pointer';
-        el.onclick = () => {
-          const diffMs = new Date(d+'T00:00:00') - new Date(today+'T00:00:00');
-          this._logOffset = Math.round(diffMs / 86400000);
-          this.renderDetail(id);
-        };
+      monthEl.querySelectorAll('.gd-month-cell.selectable').forEach(el => {
+        el.onclick = () => this.selectDate(el.dataset.date);
       });
     }
 
@@ -4559,20 +4316,18 @@ const Goals = {
             <span class="gd-h-glyph ${entry.status}">${sym}</span>
             <span class="gd-h-date">${this.formatDate(date)}</span>
             ${noteHtml}
+            ${(g.qualitySpec && entry.status === 'done' && Q_MAP[entry.quality]) ? `<span class="gd-h-quality" style="--qc:${Q_MAP[entry.quality].color}" title="Quality: ${Q_MAP[entry.quality].label}">${entry.quality}</span>` : ''}
           </div>`;
         }).join('');
       }
     }
 
-    // Note input → autosave (always saves to currently selected log date)
-    if (note) {
-      note._wired = false; // re-wire each render so it captures current logDate
-    }
+    // Note input → autosave
     if (note && !note._wired) {
       note._wired = true;
       note.addEventListener('input', () => {
         const cur = this.getById(this._activeId);
-        const k = this.logDateStr();
+        const k = this._selKey();
         if (cur?.log[k]) { cur.log[k].note = note.value; this.save(); }
       });
     }
@@ -4639,6 +4394,7 @@ const Goals = {
     }
     const ni = document.getElementById('goalNameInput'); if (ni) ni.value = '';
     const di = document.getElementById('goalDescInput'); if (di) di.value = '';
+    const qt = document.getElementById('goalQualityToggle'); if (qt) qt.checked = false; // off by default
   },
   openModal(){
     this.initModal();
@@ -4665,6 +4421,7 @@ const Goals = {
       icon: this._selectedIcon,
       color: this._selectedColor,
       category: this._selectedCat,
+      qualitySpec: !!document.getElementById('goalQualityToggle')?.checked,
     });
     this.closeModal();
     if (typeof toast === 'function') toast('Habit created — keep it daily ✦','success');
@@ -4682,8 +4439,6 @@ function escapeHtml(s){
 /* ── Wire UI ─────────────────────────────────────────────────── */
 (function wireGoals(){
   // Load any saved data immediately so first paint is correct
-  // Use _saving guard so the initial load doesn't push stale data to Supabase
-  // (SupaSync.pull() will do the authoritative cloud merge shortly after auth fires)
   try { Goals._saving = true; Goals.load(); Goals._saving = false; } catch(e){ Goals._saving = false; }
   Goals._updateTrashBadge();
 
@@ -4694,6 +4449,25 @@ function escapeHtml(s){
   const name     = document.getElementById('goalNameInput');
   const tabs     = document.getElementById('goalsTabs');
 
+  const qBtn = document.getElementById('goalsQualityBtn');
+  if (qBtn) qBtn.addEventListener('click', () => Goals.setQualityMode(!Goals._qMode));
+  // Same toggle, inside a habit's page
+  const gdQBtn = document.getElementById('gdQualityBtn');
+  if (gdQBtn) gdQBtn.addEventListener('click', () => {
+    const cur = Goals.getById(Goals._activeId);
+    if (cur && !cur.qualitySpec && !Goals._qMode) {
+      if (typeof toast === 'function') toast('Quality Specification is off for this habit — turn it on with ✎ Edit','warn');
+      return;
+    }
+    Goals.setQualityMode(!Goals._qMode);
+  });
+  try {
+    if (!exampleMode && localStorage.getItem('focus_goals_qmode') === '1' && Goals._data.some(g => g.qualitySpec)) {
+      Goals._qMode = true;
+      Goals._syncQualityBtns();
+      Goals._renderQualityLegend();
+    }
+  } catch(e){}
   if (addBtn)   addBtn.addEventListener('click', () => Goals.openModal());
   if (closeBtn) closeBtn.addEventListener('click', () => Goals.closeModal());
   if (saveBtn)  saveBtn.addEventListener('click', () => Goals.saveFromModal());
@@ -4715,6 +4489,11 @@ function escapeHtml(s){
   const editGoalModal = document.getElementById('editGoalModal');
   if (editGoalModalClose) editGoalModalClose.addEventListener('click', () => Goals.closeEditModal());
   if (editGoalModal) editGoalModal.addEventListener('click', e => { if (e.target === editGoalModal) Goals.closeEditModal(); });
+
+  // Previous / next week + month arrows on the Week and Month overviews
+  document.querySelectorAll('[data-goals-period]').forEach(btn => {
+    btn.addEventListener('click', () => Goals.shiftOverview(btn.dataset.goalsPeriod, parseInt(btn.dataset.goalsStep, 10)));
+  });
 
   if (tabs) {
     tabs.addEventListener('click', e => {

@@ -1,0 +1,109 @@
+{
+  "format": "focus-export",
+  "version": 1,
+  "exportedAt": "2026-11-05T18:48:58.716Z",
+  "data": {
+    "tasks": [
+      {
+        "id": 1,
+        "name": "Review weekly goals and plan today's priorities",
+        "category": "work",
+        "priority": "high",
+        "effort": "short",
+        "due": "2026-10-06",
+        "done": false,
+        "created": "2026-10-06"
+      },
+      {
+        "id": 2,
+        "name": "Complete Chapter 4 of Deep Work",
+        "category": "study",
+        "priority": "medium",
+        "effort": "deep",
+        "due": "",
+        "done": false,
+        "created": "2026-10-06"
+      },
+      {
+        "id": 3,
+        "name": "Morning workout — 30 min",
+        "category": "health",
+        "priority": "medium",
+        "effort": "short",
+        "due": "2026-10-06",
+        "done": true,
+        "created": "2026-10-06"
+      },
+      {
+        "id": 4,
+        "name": "Reply to client emails",
+        "category": "work",
+        "priority": "low",
+        "effort": "quick",
+        "due": "",
+        "done": false,
+        "created": "2026-10-06"
+      }
+    ],
+    "taskTrash": [],
+    "planner": {},
+    "blockTrash": [],
+    "stats": {
+      "focusMinutesByDay": {
+        "2026-10-06": 50
+      },
+      "totalPomodoros": 2,
+      "bestStreak": 1,
+      "currentStreak": 1,
+      "lastFocusDay": "2026-10-06",
+      "missedTasks": [
+        {
+          "id": 1,
+          "name": "Review weekly goals and plan today's priorities",
+          "due": "2026-10-06",
+          "missedOn": "2026-10-07",
+          "category": "work"
+        }
+      ],
+      "doneOnTimeTasks": []
+    },
+    "pomo": {
+      "durations": {
+        "pomoDuration": 25,
+        "shortBreak": 5,
+        "longBreak": 15,
+        "sessionGoal": 4
+      }
+    },
+    "notes": [
+      {
+        "id": 1,
+        "title": "Welcome to FOCUS",
+        "body": "This is your notes page.\n\nUse it for:\n- Brain dumps\n- Study notes\n- Ideas and thoughts\n- Daily journaling\n\nNotes auto-save as you type.",
+        "category": "general",
+        "color": "default",
+        "created": 1791292120618,
+        "updated": 1791292120618
+      }
+    ],
+    "noteTrash": [],
+    "theme": "midnight",
+    "lightMode": false,
+    "classicLook": false,
+    "customColumns": [],
+    "hasEverRun": true,
+    "rankSystemEnabled": true,
+    "rank": {
+      "points": 0,
+      "events": [
+        {
+          "desc": "✗ Missed: Review weekly goals and plan today's priorities",
+          "pts": -10,
+          "ts": 1791385085556
+        }
+      ]
+    },
+    "goals": [],
+    "goalsTrash": []
+  }
+}
